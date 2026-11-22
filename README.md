@@ -1,110 +1,171 @@
 # Oshitech Education ERP
 
+A complete, role-based ERP for schools and colleges, plus a separate public portal for the
+**STRE (Student Talent Recognition Exam)**.
+
 ```
 oshitech-erp/
-├── backend/    Django + DRF + PostgreSQL   (API, security, roles)
-└── frontend/   Next.js 14 + TypeScript + Tailwind   (login + 5 portals)
+├── backend/    Django 5 + DRF + PostgreSQL   (API, security, roles, STRE)
+└── frontend/   Next.js 14 + TypeScript + Tailwind   (website, login, portals, PWA)
 ```
 
-## Local run (2 terminal)
+## Run locally (two terminals)
 
-**Terminal 1: backend**
+**Terminal 1 — backend**
 ```
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+.venv\Scripts\activate          # Windows   (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
+copy .env.example .env          # then fill in your own values
 python manage.py migrate
-python manage.py createsuperuser        # Super Admin (email + password)
-python manage.py runserver              # http://localhost:8000
+python manage.py createsuperuser    # Super Admin (email + password)
+python manage.py runserver          # http://localhost:8000
 ```
 
-**Terminal 2: frontend**
+**Terminal 2 — frontend**
 ```
 cd frontend
-cp .env.example .env.local              # API_URL=http://localhost:8000
+copy .env.example .env.local    # API_URL=http://localhost:8000
 npm install
-npm run dev                             # http://localhost:3000
+npm run dev                     # http://localhost:3000
 ```
 
-Ngrok se backend expose karne par `frontend/.env.local` me `API_URL` ko backend ke HTTPS
-origin se replace karein (jaise `https://<your-backend-domain>`), `/api` path add na karein,
-aur development server restart karein. Production me env badalne ke baad frontend dobara
-build/deploy karein. Frontend ki saari API requests same-origin `/api/...` proxy se jayengi;
-backend URL code me alag-alag jagah badalne ki zaroorat nahi hai.
+All browser API calls go through the same-origin `/api/...` proxy, so the backend URL is set in one
+place only (`API_URL`). When exposing the backend with ngrok or a domain, set `API_URL` to the backend's
+HTTPS origin (for example `https://<your-backend-domain>`, without `/api`) and restart the dev server.
+In production, rebuild/redeploy the frontend after changing environment values.
 
-Website maintenance ke liye `frontend/.env.local` me `MAINTENANCE_MODE=true` set karke
-frontend restart/redeploy karein. Maintenance screen sab frontend pages par dikhegi; API,
-support form, static assets aur `/maintenance` page accessible rahenge. Kaam poora hone par
-`MAINTENANCE_MODE=false` set karke frontend restart/redeploy karein.
+**Maintenance mode:** set `MAINTENANCE_MODE=true` in `frontend/.env.local` and restart/redeploy the
+frontend. Every page shows the maintenance screen; the API, support form, static assets and
+`/maintenance` stay available. Set it back to `false` when done.
 
-## Pehli baar kya karein
-1. Super Admin se login karein → **Schools** → school/college banayein → **Create admin** (us school ka admin).
-2. School Admin se login karein → **School Profile** me address/phone bharein (ID card aur admit card par chhapta hai).
-3. **Academic Years** → current year banayein → **Courses** page par **Create Class 1–12** dabayein
-   (Class 1 se 12 aur unke common subjects ek click me ban jaate hain; college ke liye apne course khud add karein).
-4. **Classrooms** (section A, B…) → **Teachers** → **Teacher Assignments** → **Students** (class + section chunein).
-   Student ka admission hote hi uska **ID card automatically issue** ho jata hai (teacher join karne par bhi).
-5. Teacher **Attendance** me roz class ki haazri lagata hai (P / A / L / Leave).
-6. **Exams** → exam banayein → **Exam Schedule** me subjects add karein → **Generate admit cards**.
-7. Teacher/Exam Controller **Bulk Marks Entry** se poori class ke marks ek saath daalein →
-   School/Exam admin **Publish results** (lock ho jata hai) → **Report Cards** print karein (grade + rank).
-8. Student login: apna ID card, attendance, admit card (QR), aur result/report card sirf publish hone ke baad.
+### Database
+Settings read `DATABASE_URL` from `backend/.env`. Without it, a local SQLite file is used (development
+only). For real use, point it to PostgreSQL:
+```
+DATABASE_URL=postgres://erp:<password>@localhost:5432/erp
+```
 
-## Portals (role ke hisaab se menu aur permission)
-| Role | Kya kar sakta hai |
+## First-time setup
+1. Log in as **Super Admin** → **Schools** → create the school/college → **Create admin** (that school's admin).
+2. Log in as **School Admin** → fill in address/phone in **School Profile** (printed on ID cards and admit cards).
+3. **Academic Years** → create the current year → on **Courses** click **Create Class 1–12**
+   (creates Classes 1–12 with common subjects in one click; colleges can add their own courses).
+4. **Classrooms** (sections A, B…) → **Teachers** → **Teacher Assignments** → **Students** (pick class + section),
+   or use **Import Students** to admit many students from Excel/CSV.
+   An **ID card is issued automatically** on admission (and when a teacher joins).
+5. Teachers mark daily **Attendance** for their classes (Present / Absent / Late / Leave).
+6. **Exams** → create an exam → add subjects in **Exam Schedule** → **Generate admit cards**.
+7. Teachers / Exam Controller enter marks for a whole class with **Bulk Marks Entry** →
+   School / Exam admin **Publish results** (results get locked) → print **Report Cards** (grade + rank).
+8. At the end of the session, use **Promote Students** to move each class to the next class and session.
+9. Students log in to see their ID card, attendance, admit card (with QR) and results/report card
+   (only after results are published).
+
+## Portals (menu and permissions depend on the role)
+| Role | Can do |
 |---|---|
-| Super Admin | Saare schools, school admin banana, sab data, audit logs |
-| School Admin | Apne school ka sab kuch: profile, classes, teachers, students, ID cards, attendance, exams, results, accounts |
-| Teacher | Sirf apni classes ke students, attendance, apne subjects ke marks, report cards, apna aur apne students ka ID card |
-| Exam Controller | Exams, schedule, admit cards, marks, publish results, report cards, students ke ID cards (read-only) |
-| Student | Apna profile, ID card, attendance, exam schedule, admit card, published results/report card, teacher rating |
+| Super Admin | All schools, create school admins, all data, audit logs |
+| School Admin | Everything for their own school: profile, classes, teachers, students, ID cards, attendance, exams, results, fees, promotion, import, accounts |
+| Teacher | Only their own classes: students, attendance, marks for their subjects, homework, report cards, ID cards |
+| Exam Controller | Exams, schedule, admit cards, marks, publish results, report cards, students' ID cards (read-only) |
+| Student | Own profile, ID card, attendance, timetable, homework, fees, exam schedule, admit card, published results / report card, teacher rating |
+| Exam Portal Admin (STRE) | STRE registrations, payments, admit cards, results, notices and support — no access to school data |
 
-## Nayi features
-- **ID cards**: admission/joining par auto-issue, front + back (photo, class, blood group, father & mother name, parent phone), QR verify
-  (`/verify-id/<code>`), reissue (purana QR band) / revoke, 2 cards per A4 print. Purane students ke liye migration
-  khud card bana deti hai; **Issue missing cards** button bhi hai.
-- **Attendance**: class-wise daily marking, monthly summary aur percentage; student apni attendance dekhta hai.
-- **Bulk marks entry**: ek exam + subject ke liye poori class; ek bhi row galat ho to kuch save nahi hota.
-- **Report cards**: total, percentage, grade (A1–E), pass/fail, class rank; poori class ek saath print.
-- **Class 1–12**: ek click setup, students/ID cards me class filter, har jagah "Class N" label.
-- **PWA**: app install ho sakta hai (Chrome/Edge me "Install app" button, iPhone par Share → Add to Home Screen),
-  offline page; private API data kabhi cache nahi hota.
-- **Dark / light mode**: sirf **ek** toggle (har page par niche-baayein floating button); choice har page par lagti hai,
-  page load se pehle apply hoti hai (white flash nahi) aur pehli baar system theme follow karti hai.
-- **Notice board**: notice / circular / holiday / event; audience (sab, students, teachers, staff) aur class ke hisaab se
-  dikhta hai; dashboard par latest notices. School Admin aur Exam Controller post kar sakte hain.
-- **Timetable**: admin period-wise timetable banata hai (teacher ki double booking block hoti hai); sab ke liye weekly
-  grid view, teacher ke liye "My teaching schedule", print.
-- **Homework**: teacher sirf apni classes ko homework deta hai; student apni class ka homework dekhta hai.
-- **Leave**: student/teacher/exam controller leave apply karte hain; student ki leave class teacher ya admin, staff ki
-  leave admin approve/reject karta hai.
-- **Fees**: fee structure (class-wise) → ek click me sab students ke invoices → payment record (cash/UPI/card/bank/
-  cheque) → printable receipt (amount in words). Discount, late fine, balance, overdue status; student "My Fees" me
-  apne invoices aur receipts dekhta hai. Teacher/exam controller ko fees ka access nahi.
-- **Contact Us** (`/contact`): admission/fees/general enquiry; school code daalne par enquiry seedha us school ke
-  Support Inbox me jati hai. Phone/email/address `frontend/.env.local` ke `NEXT_PUBLIC_CONTACT_*` se aate hain.
-- **Mobile**: home page par hamburger menu, login portal pages par upar ka khaali space hata diya, portal ka top bar sticky.
+## School ERP features
+- **ID cards:** issued automatically on admission/joining; front and back (photo, class, blood group,
+  father's and mother's name, parent phone); QR verification (`/verify-id/<code>`); reissue (old QR stops
+  working) or revoke; 2 cards per A4 page. An **Issue missing cards** button covers older records.
+- **Attendance:** class-wise daily marking, monthly summary and percentage; students see their own attendance.
+- **Bulk marks entry:** a whole class for one exam + subject; if any row is invalid, nothing is saved.
+- **Report cards:** total, percentage, grade (A1–E), pass/fail and class rank; print a whole class at once.
+- **Classes 1–12:** one-click setup, class filters for students and ID cards, "Class N" labels everywhere.
+- **Promote Students:** move a class to the next class and new session in one step — promote, detain or
+  mark as passed out per student; optional new section, roll-number reset, ID card validity extension;
+  seat/capacity checks; full **undo** of any promotion batch.
+- **Import Students:** download an Excel/CSV template, upload it, see row-by-row errors, then import.
+  Logins and ID cards are created automatically; a login list (email + temporary password) can be
+  downloaded for 24 hours. Students without an email get a login ID like `admissionno.schoolcode@student.local`.
+- **Notice board:** notice / circular / holiday / event, targeted by audience (everyone, students,
+  teachers, staff) and class; optional **PDF attachment**; public notices appear on the website.
+- **Timetable:** period-wise timetable (teacher double-booking is blocked); weekly grid for everyone,
+  "My teaching schedule" for teachers; printable.
+- **Homework:** teachers post homework to their classes; students see their class homework.
+- **Leave:** students, teachers and exam controllers apply for leave; the class teacher or admin
+  approves student leave, the admin approves staff leave.
+- **Fees:** class-wise fee structure → one-click invoices for all students → record payments
+  (cash/UPI/card/bank/cheque) → printable receipt (amount in words). Discounts, late fine, balance and
+  overdue status. Students see their invoices and receipts in **My Fees**. Teachers and exam controllers
+  have no access to fees.
+- **Forgot password:** email OTP reset for every portal; only accounts that exist (and match the portal's
+  role) can reset.
+- **Contact Us** (`/contact`): admission/fees/general enquiries; entering a school code sends the
+  enquiry straight to that school's Support Inbox. Contact details come from `NEXT_PUBLIC_CONTACT_*`.
+- **Terms & Conditions** (`/terms`) and **Privacy Policy** (`/privacy`).
 
-## Architecture note
-Docker deployment me browser ka saara traffic Nginx load balancer (`http://localhost`) se jata hai:
-`/api/` aur configured admin path Django ko, `/static/` aur `/media/` shared volumes ko, aur baaki paths Next.js ko.
-Database, Redis, Django aur Next.js ke ports host par publish nahi hote. Tokens httpOnly cookies me hain:
-JavaScript unhe padh nahi sakti. Upar diye local two-terminal development setup me Next.js ka API rewrite use hota hai.
+## STRE — Student Talent Recognition Exam
+A separate public portal (`/stre`) that never touches school ERP data.
+- **Registration** with email OTP verification, school name, address, class, subject, interests,
+  aim of life, Aadhaar (stored encrypted), photo and signature (any size — resized in the browser).
+- **Payments (Cashfree):** online checkout on the site. Payments are confirmed **automatically** — on the
+  checkout callback, by the Cashfree webhook, when the status page opens, and by a background check every
+  2 minutes. A registration is **confirmed only after payment**; unpaid registrations do not appear in the
+  admin list (an "Unpaid" filter is available for support).
+- **After payment, automatically:** roll number → admit card → emails (payment receipt + admit card).
+- **Status page** with captcha (registration number + mobile) and printable **admit card** with QR verification.
+- **Results:** enter marks in a table or upload Excel, automatic ranks (ties share a rank), merit list
+  export, an **ON/OFF switch** to show the result on the website, result emails, and printable
+  **Certificates of Merit / Participation** with QR verification (`/stre/verify-certificate/<code>`).
+- **Admin tools:** edit or delete registrations, bulk email with a failed-email resend list,
+  support tickets, notices (with PDF), exams and fees.
+
+## Platform
+- **PWA:** installable (install card in the footer and portal sidebar; on iPhone: Share → Add to Home
+  Screen), offline page; private API data is never cached.
+- **Dark / light mode** on every page, applied before the page paints (no white flash); follows the
+  system theme the first time.
+- **Session security:** automatic sign-out after 30 minutes of inactivity and after 12 hours in total.
+- **Mobile friendly:** responsive layouts, hamburger menu on the website, sticky portal top bar.
+
+## Architecture
+In Docker deployment, all browser traffic goes through the Nginx load balancer (`http://localhost`):
+`/api/` and the configured admin path go to Django, `/static/` and `/media/` to shared volumes, and
+everything else to Next.js. Database, Redis, Django and Next.js ports are not published on the host.
+Tokens live in httpOnly cookies, so JavaScript cannot read them. The local two-terminal setup above uses
+the Next.js API rewrite instead.
 
 ## Docker deployment / scaling
-Pehle `backend/.env.example` ko `backend/.env` me copy karke production secrets/settings set karein. Phir
-`docker compose -f backend/docker-compose.yml up --build`
-chalayein. User traffic ke liye sirf Nginx load balancer ka port 80 publish hota hai; TLS terminate karne wale
-external proxy/load balancer ko `X-Forwarded-Proto: https` header bhejna chahiye. Secure cookies ke liye HTTPS
-zaroori hai. Backend/frontend replicas badhane ke liye udaharan:
-`docker compose -f backend/docker-compose.yml up --build --scale backend=3 --scale frontend=2`.
-Nginx Docker DNS ke zariye replicas ko discover karke traffic distribute karta hai; migrations replicas se pehle
-ek baar chalti hain. Production me Postgres credentials, Django secrets, allowed hosts, aur CSRF trusted origins
-ko strong environment values se configure karein.
+Copy `backend/.env.example` to `backend/.env` and set production secrets and settings, then run:
+```
+docker compose -f backend/docker-compose.yml up --build
+```
+Only Nginx's port 80 is published. An external proxy/load balancer that terminates TLS must send the
+`X-Forwarded-Proto: https` header — HTTPS is required for secure cookies. To scale:
+```
+docker compose -f backend/docker-compose.yml up --build --scale backend=3 --scale frontend=2
+```
+Nginx discovers replicas through Docker DNS; migrations run once before the replicas start. In
+production, configure strong values for Postgres credentials, Django secrets, allowed hosts, CSRF
+trusted origins, `SITE_URL` and `CASHFREE_NOTIFY_URL`.
 
-## Limitations (abhi)
-- Dropdowns me ek baar me max 200 records aate hain (tables me poore records pagination ke saath dikhte hain).
-- PDF abhi browser Print / Save as PDF se; server-side PDF (Celery) baad me.
-- 2FA, SMS/email notification, online payment gateway, library, transport aur hostel modules abhi nahi.
-- Production build ko dev server ke saath test karna ho to `NEXT_DIST_DIR=.next-prod npm run build` use karein,
-  taaki `npm run dev` ka `.next` folder overwrite na ho.
+## Backups
+`backend/scripts/backup.ps1` backs up the PostgreSQL database (`pg_dump`) and the `media` folder to
+`%USERPROFILE%\OshitechBackups` (change with `BACKUP_DIR`), keeping 14 days (`BACKUP_KEEP_DAYS`).
+Schedule it daily with Windows Task Scheduler. Restore with:
+```
+powershell -ExecutionPolicy Bypass -File backend\scripts\restore.ps1 -DumpFile <db_*.dump> [-MediaZip <media_*.zip>]
+```
+Point `BACKUP_DIR` to a Google Drive / OneDrive folder to keep an off-site copy.
+
+## Secrets
+Never commit `.env` files. Use `backend/.env.example` and `frontend/.env.example` as templates and keep
+real keys (Cashfree, email, database, encryption key) only on the server.
+
+## Current limitations
+- Dropdowns load up to 200 records at a time (tables show all records with pagination).
+- PDFs are produced with the browser's Print / Save as PDF; no server-side PDF generation yet.
+- Online payment for school fees, SMS/WhatsApp alerts, 2FA, and library, transport and hostel modules
+  are not built yet.
+- To test a production build alongside the dev server, use `NEXT_DIST_DIR=.next-prod npm run build`
+  so the dev server's `.next` folder is not overwritten.
