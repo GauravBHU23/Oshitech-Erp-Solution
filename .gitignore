@@ -1,0 +1,31 @@
+# Python / Django
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+staticfiles/
+backend/media/
+
+# Node.js / Next.js
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Database backups / dumps (students ka asli data - kabhi GitHub par nahi)
+*.sqlite3*
+*.dump
+*.sql.gz
+data.json
+backups/

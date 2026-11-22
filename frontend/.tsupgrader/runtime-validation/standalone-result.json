@@ -1,0 +1,100 @@
+{
+  "planHash": "c28b6060f6ec4ee7f1f777081d78becf50df3e0ef3dfc2bfef7bf7dda8b4c0aa",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-11-14T15:15:41.2817406Z",
+  "retryCount": 0,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "tsc-no-emit",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E oshitech-erp-frontend@1.0.0 typecheck\r\n\u003E tsc --noEmit\r\n\r\n",
+        "durationMs": 23429
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E oshitech-erp-frontend@1.0.0 test\r\n\u003E vitest run\r\n\r\n\u001B[33mThe CJS build of Vite\u0027s Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.\u001B[39m\r\n\r\n\u001B[1m\u001B[7m\u001B[36m RUN \u001B[39m\u001B[27m\u001B[22m \u001B[36mv2.1.9 \u001B[39m\u001B[90mC:/Users/gaura/Downloads/oshitech-erp/frontend\u001B[39m\r\n\r\n \u001B[32m\u2713\u001B[39m src/lib/auth.test.tsx \u001B[2m(\u001B[22m\u001B[2m3 tests\u001B[22m\u001B[2m)\u001B[22m\u001B[33m 406\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/components/ThemeToggle.test.tsx \u001B[2m(\u001B[22m\u001B[2m2 tests\u001B[22m\u001B[2m)\u001B[22m\u001B[33m 441\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/components/RegistrationForm.test.tsx \u001B[2m(\u001B[22m\u001B[2m3 tests\u001B[22m\u001B[2m)\u001B[22m\u001B[33m 2000\u001B[2mms\u001B[22m\u001B[39m\r\n   \u001B[33m\u001B[2m\u2713\u001B[22m\u001B[39m RegistrationForm\u001B[2m \u003E \u001B[22mexplains that teacher registration needs an active course \u001B[33m582\u001B[2mms\u001B[22m\u001B[39m\r\n   \u001B[33m\u001B[2m\u2713\u001B[22m\u001B[39m RegistrationForm\u001B[2m \u003E \u001B[22mshows a printable teacher approval slip after registration succeeds \u001B[33m620\u001B[2mms\u001B[22m\u001B[39m\r\n   \u001B[33m\u001B[2m\u2713\u001B[22m\u001B[39m RegistrationForm\u001B[2m \u003E \u001B[22mshows a student approval slip with guardian and admission details \u001B[33m791\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/lib/nav.test.ts \u001B[2m(\u001B[22m\u001B[2m20 tests\u001B[22m\u001B[2m)\u001B[22m\u001B[90m 63\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/components/PasswordInput.test.tsx \u001B[2m(\u001B[22m\u001B[2m1 test\u001B[22m\u001B[2m)\u001B[22m\u001B[90m 226\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/middleware.test.ts \u001B[2m(\u001B[22m\u001B[2m7 tests\u001B[22m\u001B[2m)\u001B[22m\u001B[90m 123\u001B[2mms\u001B[22m\u001B[39m\r\n \u001B[32m\u2713\u001B[39m src/lib/api.test.tsx \u001B[2m(\u001B[22m\u001B[2m1 test\u001B[22m\u001B[2m)\u001B[22m\u001B[90m 24\u001B[2mms\u001B[22m\u001B[39m\r\n\r\n\u001B[2m Test Files \u001B[22m \u001B[1m\u001B[32m7 passed\u001B[39m\u001B[22m\u001B[90m (7)\u001B[39m\r\n\u001B[2m      Tests \u001B[22m \u001B[1m\u001B[32m37 passed\u001B[39m\u001B[22m\u001B[90m (37)\u001B[39m\r\n\u001B[2m   Start at \u001B[22m 20:45:06\r\n\u001B[2m   Duration \u001B[22m 34.74s\u001B[2m (transform 2.30s, setup 0ms, collect 5.64s, tests 3.28s, environment 55.74s, prepare 6.45s)\u001B[22m\r\n\r\n",
+        "durationMs": 43054,
+        "testResults": {
+          "testFramework": "vitest",
+          "runnerDetectedFrom": "package_json",
+          "testsTotal": 37,
+          "testsPassed": 37,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": false
+        }
+      },
+      {
+        "name": "api-url-rewrite",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "",
+        "durationMs": 248
+      }
+    ],
+    "executions": [
+      {
+        "source": "tsc-no-emit",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "typecheck"
+        ],
+        "cwd": "C:\\Users\\gaura\\Downloads\\oshitech-erp\\frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "C:\\Users\\gaura\\Downloads\\oshitech-erp\\frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "api-url-rewrite",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "--input-type=module",
+          "-e",
+          "const { default: config } = await import(\u0027./next.config.mjs\u0027); const rules = await config.rewrites(); if (rules[0].destination !== \u0027https://backend.example.ngrok-free.app/api/:path*/\u0027) process.exit(1);"
+        ],
+        "cwd": "C:\\Users\\gaura\\Downloads\\oshitech-erp\\frontend",
+        "env": {
+          "API_URL": "https://backend.example.ngrok-free.app/"
+        },
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}

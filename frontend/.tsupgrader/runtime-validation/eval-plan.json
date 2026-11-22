@@ -1,0 +1,40 @@
+{
+  "projectType": "webapp",
+  "setup": [],
+  "assertions": [
+    {
+      "name": "tsc-no-emit",
+      "kind": "process",
+      "command": "npm",
+      "args": ["run", "typecheck"],
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "tests-pass",
+      "kind": "process",
+      "command": "npm",
+      "args": ["test"],
+      "verificationMethod": "test-results",
+      "expected": "0",
+      "timeoutSeconds": 300
+    },
+    {
+      "name": "api-url-rewrite",
+      "kind": "process",
+      "command": "node",
+      "args": [
+        "--input-type=module",
+        "-e",
+        "const { default: config } = await import('./next.config.mjs'); const rules = await config.rewrites(); if (rules[0].destination !== 'https://backend.example.ngrok-free.app/api/:path*/') process.exit(1);"
+      ],
+      "env": {
+        "API_URL": "https://backend.example.ngrok-free.app/"
+      },
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 30
+    }
+  ]
+}

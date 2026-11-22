@@ -1,0 +1,82 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erp}
+      POSTGRES_USER: ${POSTGRES_USER:-erp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp_password}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp} -d ${POSTGRES_DB:-erp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://erp:erp_password@db:5432/erp}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput"
+    volumes:
+      - staticfiles:/app/staticfiles
+  backend:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://erp:erp_password@db:5432/erp}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes: ["mediafiles:/app/media"]
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+  celery:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://erp:erp_password@db:5432/erp}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: celery -A config worker -l info
+  frontend:
+    build: ../frontend
+    environment:
+      NODE_ENV: production
+      API_URL: http://backend:8000
+    depends_on:
+      - backend
+  loadbalancer:
+    image: nginx:1.28-alpine
+    ports: ["80:80"]
+    environment:
+      ADMIN_URL: ${ADMIN_URL:-admin/}
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - staticfiles:/var/www/static:ro
+      - mediafiles:/var/www/media:ro
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  pgdata:
+  mediafiles:
+  staticfiles:

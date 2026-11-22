@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#4f46e5" />
+  <title>Offline · Oshitech ERP</title>
+  <style>
+    :root { --bg: #f6f7fb; --card: #fff; --text: #0f172a; --muted: #64748b; --border: #e2e8f0; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0b1220; --card: #111c30; --text: #e2e8f0; --muted: #aab8ca; --border: rgb(148 163 184 / 20%); } }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { width: 100%; max-width: 420px; border: 1px solid var(--border); border-radius: 24px; background: var(--card); padding: 32px; text-align: center; }
+    img { width: 56px; height: 56px; border-radius: 14px; }
+    h1 { margin: 20px 0 8px; font-size: 20px; }
+    p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    button { margin-top: 24px; border: 0; border-radius: 12px; background: #4f46e5; color: #fff; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/icons/icon-192.png" alt="" />
+    <h1>You are offline</h1>
+    <p>Oshitech ERP needs an internet connection to load school records. Check your connection and try again.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+</body>
+</html>
