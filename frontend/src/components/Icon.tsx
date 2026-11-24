@@ -1,0 +1,45 @@
+import type { ReactNode } from "react";
+
+const paths: Record<string, ReactNode> = {
+  home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
+  school: <><path d="m3 9 9-6 9 6" /><path d="M5 10v10m5-10v10m4-10v10m5-10v10M3 21h18" /></>,
+  book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v17H6.5A2.5 2.5 0 0 0 4 22z" /><path d="M4 5.5v14A2.5 2.5 0 0 1 6.5 17H20" /></>,
+  users: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  teacher: <><path d="m2 8 10-5 10 5-10 5L2 8Z" /><path d="M6 10v5c2 2 10 2 12 0v-5M22 8v6" /></>,
+  student: <><circle cx="12" cy="8" r="4" /><path d="M5 21v-1a7 7 0 0 1 14 0v1" /></>,
+  classroom: <><path d="M3 21h18M5 21V5h14v16M8 9h3m2 0h3m-8 4h3m2 0h3m-8 8v-4h4v4" /></>,
+  calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
+  exam: <><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" /><rect x="9" y="2" width="6" height="4" rx="1" /><path d="m8 13 2 2 5-5" /></>,
+  ticket: <><path d="M3 8a2 2 0 0 0 0 4 2 2 0 0 1 0 4v3h18v-3a2 2 0 0 1 0-4 2 2 0 0 0 0-4V5H3z" /><path d="M13 5v2m0 4v2m0 4v2" /></>,
+  chart: <><path d="M3 3v18h18" /><path d="m7 14 4-4 4 4 6-7" /></>,
+  star: <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
+  shield: <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z" /><path d="m9 12 2 2 4-4" /></>,
+  lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 5v2" /></>,
+  key: <><circle cx="8" cy="15" r="5" /><path d="m11.5 11.5 8-8L22 6l-2 2 2 2-3 3-2-2-2 2" /></>,
+  settings: <><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 8h4" /></>,
+  layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></>,
+  arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
+  external: <><path d="M14 3h7v7m-1-6-9 9" /><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></>,
+  check: <path d="m5 12 4 4L19 6" />,
+  menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
+  close: <><path d="m18 6-12 12M6 6l12 12" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+  userPlus: <><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /><path d="M19 8v6m-3-3h6" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></>,
+  moon: <path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z" />,
+  eye: <><path d="M2 12s3.7-7 10-7 10 7 10 7-3.7 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
+  idcard: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="11" r="2.5" /><path d="M5.5 17a3.5 3.5 0 0 1 7 0M14 9h4m-4 3h4m-4 3h2" /></>,
+  calendarCheck: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18m-12 5 2 2 4-4" /></>,
+  award: <><circle cx="12" cy="9" r="6" /><path d="m8.5 13.9-1.5 7.1 5-3 5 3-1.5-7.1" /></>,
+  wallet: <><rect x="3" y="6" width="18" height="14" rx="2" /><path d="M3 10h18M16 15h2M7 6V4h10v2" /></>,
+  megaphone: <><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1Z" /><path d="M15 9a3 3 0 0 1 0 6m3-9a7 7 0 0 1 0 12" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
+  printer: <><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>,
+  download: <><path d="M12 3v12m-5-5 5 5 5-5M5 21h14" /></>,
+  eyeOff: <><path d="m3 3 18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.3 0 10 7 10 7a14.8 14.8 0 0 1-3.2 4.2" /><path d="M6.6 6.6C3.7 8.5 2 12 2 12s3.7 7 10 7a10.7 10.7 0 0 0 4.2-.8" /></>,
+};
+
+export default function Icon({ name, className = "", size = 20, strokeWidth = 1.8 }: { name: string; className?: string; size?: number; strokeWidth?: number }) {
+  return <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.layers}</svg>;
+}
