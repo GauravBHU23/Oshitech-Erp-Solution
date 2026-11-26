@@ -14,3 +14,6 @@ logs/
 
 # Alembic generates these at runtime, keep versions/ tracked
 .pytest_cache/
+
+# Redis runtime snapshots
+*.rdb
