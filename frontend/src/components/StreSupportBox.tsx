@@ -61,7 +61,7 @@ export default function StreSupportBox({ defaults }: { defaults?: { name?: strin
           <span className="block text-sm font-semibold text-slate-900">Made a mistake or need help? Raise a support request</span>
           <span className="block text-xs text-slate-500">Wrong name, payment issue, admit card problem — the exam cell will sort it out and reply by email.</span>
         </span>
-        <Icon name="arrow" size={16} className={`shrink-0 text-slate-400 transition ${open ? "-rotate-90" : "rotate-90"}`} />
+        <Icon name="chevronDown" size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (done ? (
         <div role="status" className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">

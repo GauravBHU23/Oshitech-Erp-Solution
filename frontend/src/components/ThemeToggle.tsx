@@ -1,41 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false);
-  const interacted = useRef(false);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("oshitech-theme");
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const enabled = interacted.current
-      ? document.documentElement.dataset.theme === "dark"
-      : saved ? saved === "dark" : prefersDark;
-    setDark(enabled);
-    document.documentElement.dataset.theme = enabled ? "dark" : "light";
     const syncTheme = () => setDark(document.documentElement.dataset.theme === "dark");
-    const syncStorage = (event: StorageEvent) => {
-      if (event.key !== "oshitech-theme") return;
-      const nextDark = event.newValue ? event.newValue === "dark" : prefersDark;
-      setDark(nextDark);
-      document.documentElement.dataset.theme = nextDark ? "dark" : "light";
-    };
+    syncTheme();
     window.addEventListener("oshitech:theme-change", syncTheme);
-    window.addEventListener("storage", syncStorage);
     return () => {
       window.removeEventListener("oshitech:theme-change", syncTheme);
-      window.removeEventListener("storage", syncStorage);
     };
   }, []);
 
   const toggle = () => {
-    interacted.current = true;
-    const enabled = !dark;
+    const enabled = document.documentElement.dataset.theme !== "dark";
     setDark(enabled);
     document.documentElement.dataset.theme = enabled ? "dark" : "light";
-    window.localStorage.setItem("oshitech-theme", enabled ? "dark" : "light");
     window.dispatchEvent(new Event("oshitech:theme-change"));
   };
 

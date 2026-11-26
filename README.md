@@ -131,25 +131,30 @@ A separate public portal (`/stre`) that never touches school ERP data.
 - **Mobile friendly:** responsive layouts, hamburger menu on the website, sticky portal top bar.
 
 ## Architecture
-In Docker deployment, all browser traffic goes through the Nginx load balancer (`http://localhost`):
-`/api/` and the configured admin path go to Django, `/static/` to the static volume, and everything
-else to Next.js. Uploaded files are only served by Django API views that apply their access checks;
-Nginx does not expose the media volume directly. Database, Redis, Django and Next.js ports are not
-published on the host.
+In Docker deployment, traffic goes through the Nginx load balancer (`http://localhost`):
+`/api/` and the configured admin path go to Django, `/fast-api/` goes to FastAPI (the prefix is
+removed before forwarding, so `/fast-api/api/health/` reaches FastAPI's `/api/health/`), `/static/`
+goes to the static volume, and everything else to Next.js. Uploaded files are only served by Django
+API views that apply their access checks; Nginx does not expose the media volume directly. Database,
+Redis, Django, FastAPI and Next.js ports are not published on the host.
 Tokens live in httpOnly cookies, so JavaScript cannot read them. The local two-terminal setup above uses
 the Next.js API rewrite instead.
 
 ## Docker deployment / scaling
-Copy `backend/.env.example` to `backend/.env` and set production secrets and settings, then run:
+Copy `backend/.env.example` to `backend/.env` and fill in production secrets. FastAPI
+(`fast-backend`) has no `.env` of its own — it reads `backend/.env` directly, so there is
+nothing to configure separately. Set `DATABASE_URL` to `db` as the Docker hostname; Compose
+already injects `REDIS_CACHE_URL=redis://redis:6379/2` for both backends. Then run:
 ```
-docker compose -f backend/docker-compose.yml up --build
+docker compose --env-file backend/.env -f backend/docker-compose.yml up --build
 ```
 Only Nginx's port 80 is published. An external proxy/load balancer that terminates TLS must send the
 `X-Forwarded-Proto: https` header — HTTPS is required for secure cookies. To scale:
 ```
-docker compose -f backend/docker-compose.yml up --build --scale backend=3 --scale frontend=2
+docker compose --env-file backend/.env -f backend/docker-compose.yml up --build --scale backend=3 --scale frontend=2
 ```
-Nginx discovers replicas through Docker DNS; migrations run once before the replicas start. In
+Nginx discovers replicas through Docker DNS; migrations run once before the replicas start. Add
+`--scale fast-backend=2` to scale the FastAPI service. In
 production, configure strong values for Postgres credentials, Django secrets, allowed hosts, CSRF
 trusted origins, `SITE_URL` and `CASHFREE_NOTIFY_URL`.
 

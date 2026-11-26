@@ -189,6 +189,9 @@ class LoginView(APIView):
             return Response({"detail": "This school account is inactive."}, status=status.HTTP_403_FORBIDDEN)
 
         user.reset_failed_logins()
+        # Ek account, ek hi active session: naya login hote hi purane saare (kisi bhi
+        # device/browser ke) sessions revoke ho jaate hain.
+        _revoke_user_refresh_tokens(user)
         refresh = _issue_session(user)
         response = Response({"user": UserSerializer(user).data, "session": _session_info(refresh)})
         _set_cookies(response, str(refresh.access_token), str(refresh))

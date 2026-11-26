@@ -3,7 +3,9 @@ import base64
 import datetime
 import hashlib
 import hmac
+import re
 import tempfile
+from decimal import Decimal
 from unittest import mock
 
 from cryptography.fernet import Fernet
@@ -12,13 +14,14 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APITestCase
 
 from apps.core.roles import Role
 from apps.core.tests import PW, User, make_school
 
 from . import security
-from .models import StreCaptcha, StreExam, StreRegistration, StreSubject
+from .models import StreCaptcha, StreEmailLog, StreExam, StreRegistration, StreSubject
 from .security import make_email_token
 
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
@@ -82,6 +85,41 @@ class StrePublicTests(StreBase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("STRE26-000001", mail.outbox[0].subject)
 
+    def test_registration_capitalizes_text_field_initials(self):
+        response = self.register(
+            first_name="riya",
+            last_name="verma",
+            father_name="mohan kumar",
+            school_name="kendriya vidyalaya bhu",
+            address="12 lanka road, varanasi 221005",
+            subject="mathematics",
+            subject_interest="algebra and physics",
+            interests=["game development", "chess"],
+            aim_of_life="to become a scientist",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        registration = StreRegistration.objects.get()
+        self.assertEqual(registration.first_name, "Riya")
+        self.assertEqual(registration.last_name, "Verma")
+        self.assertEqual(registration.father_name, "Mohan Kumar")
+        self.assertEqual(registration.school_name, "Kendriya Vidyalaya Bhu")
+        self.assertEqual(registration.address, "12 Lanka Road, Varanasi 221005")
+        self.assertEqual(registration.subject, "Mathematics")
+        self.assertEqual(registration.subject_interest, "Algebra And Physics")
+        self.assertEqual(registration.interests, ["Game Development", "Chess"])
+        self.assertEqual(registration.aim_of_life, "To Become A Scientist")
+
+    def test_public_info_payload_is_cached(self):
+        from apps.stre.views import PublicInfoView
+
+        with mock.patch(
+            "apps.stre.views.PublicInfoView._cached_payload",
+            wraps=PublicInfoView._cached_payload,
+        ) as payload:
+            self.client.get("/api/v1/stre/public/")
+            self.client.get("/api/v1/stre/public/")
+        payload.assert_called_once()
+
     def test_custom_subject_and_validation_errors(self):
         self.assertEqual(self.register(subject="Astronomy").status_code, 201)
         bad = self.register(email="x@example.com", mobile="12345", first_name="R2", aadhaar_number="123", interests=[], signature=SimpleUploadedFile("s.txt", b"hello"))
@@ -113,6 +151,13 @@ class StrePublicTests(StreBase):
             "status": "payment_pending",
             "status_label": "Payment pending",
             "access_token": registration["access_token"],
+            "registration_no": reg_no,
+            "amount": Decimal("200.00"),
+            "payment_reference": "",
+            "payment_attempts": 0,
+            "last_payment_status": "",
+            "last_payment_error": "",
+            "results_published": False,
         })
         token_status = self.client.get(f"/api/v1/stre/status/?token={registration['access_token']}")
         self.assertEqual(token_status.data, status.data)
@@ -135,7 +180,7 @@ class StreFlowTests(StreBase):
         self.assertEqual(verified["status"], "paid")
         self.assertFalse(any("admit card" in m.subject.lower() for m in mail.outbox))
         gen = self.client.post("/api/v1/stre/admin/registrations/generate-admit-cards/", {"exam": str(self.exam.id)})
-        self.assertEqual(gen.data["issued"], 0)  # pehle hi ban chuka
+        self.assertEqual(gen.data["issued"], 1)  # admit card sirf admin ke generate-admit-cards se banta hai, payment par nahi
         self.assertEqual(self.client.get(f"/api/v1/stre/admin/registrations/{reg.id}/file/photo/").status_code, 200)
         self.assertIn("123456789012", self.client.get(f"/api/v1/stre/admin/registrations/{reg.id}/").data["aadhaar_number"])
         csv = self.client.get("/api/v1/stre/admin/registrations/export/")
@@ -147,6 +192,25 @@ class StreFlowTests(StreBase):
         self.assertEqual(card.data["roll_no"], self.roll1)
         self.assertEqual(self.client.get(f"/api/v1/stre/files/{token}/photo/").status_code, 200)
         self.assertTrue(self.client.get(f"/api/v1/stre/verify/{self.roll1}/").data["valid"])
+
+    def test_registration_pdf_downloads_after_payment_not_before(self):
+        registration = self.register().data
+        token = registration["access_token"]
+
+        # Payment pending: no PDF yet
+        before = self.client.get(f"/api/v1/stre/registration/{token}/download/")
+        self.assertEqual(before.status_code, 400)
+
+        reg = StreRegistration.objects.get()
+        self.client.force_authenticate(self.stre_admin)
+        self.client.post(f"/api/v1/stre/admin/registrations/{reg.id}/mark-paid/", {})
+        self.client.force_authenticate(None)
+
+        after = self.client.get(f"/api/v1/stre/registration/{token}/download/")
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after["Content-Type"], "application/pdf")
+        self.assertIn("attachment;", after["Content-Disposition"])
+        self.assertTrue(after.content.startswith(b"%PDF-"))
 
     def test_cannot_issue_admit_card_unpaid(self):
         self.register()
@@ -168,7 +232,7 @@ class StreFlowTests(StreBase):
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("attachment;", response["Content-Disposition"])
         self.assertTrue(response.content.startswith(b"%PDF-"))
-        self.assertEqual(response["Cache-Control"], "private, no-store")
+        self.assertEqual(response["Cache-Control"], "no-store, private")  # NoStoreApiMiddleware sets this for every /api/v1/ response
 
     @override_settings(RAZORPAY_KEY_ID="rzp_test_x", RAZORPAY_KEY_SECRET="secret123")
     def test_razorpay_signature_verification(self):
@@ -289,9 +353,16 @@ class StreAutoAdmitCardTests(StreBase):
         with mock.patch("apps.stre.payments.create_order", return_value="order_Z"):
             self.client.post("/api/v1/stre/pay/order/", {"token": token})
         sig = hmac.new(b"secret123", b"order_Z|pay_9", hashlib.sha256).hexdigest()
-        res = self.client.post("/api/v1/stre/pay/verify/", {"token": token, "razorpay_order_id": "order_Z", "razorpay_payment_id": "pay_9", "razorpay_signature": sig})
+        mail.outbox.clear()
+        payload = {"token": token, "razorpay_order_id": "order_Z", "razorpay_payment_id": "pay_9", "razorpay_signature": sig}
+        res = self.client.post("/api/v1/stre/pay/verify/", payload)
         self.assertEqual(res.data["status"], "paid")
         self.assertTrue(res.data["roll_no"])
+        duplicate = self.client.post("/api/v1/stre/pay/verify/", payload)
+        self.assertEqual(duplicate.data["status"], "paid")
+        self.assertEqual(sum("payment confirmed" in message.subject.lower() for message in mail.outbox), 1)
+        registration = StreRegistration.objects.get()
+        self.assertEqual(StreEmailLog.objects.filter(registration=registration, kind=StreEmailLog.Kind.PAYMENT).count(), 1)
 
 
 @override_settings(CASHFREE_APP_ID="cf_app", CASHFREE_SECRET_KEY="cfsk_ma_test_secret", CASHFREE_ENV="sandbox")
@@ -324,6 +395,9 @@ class StreCashfreeTests(StreBase):
         self.assertRegex(roll, r"^\d{8}$")  # payment hote hi roll number
         self.assertTrue(any(roll in m.body for m in mail.outbox))  # confirmation mail me roll no
         self.assertTrue(any("payment confirmed" in m.subject.lower() for m in mail.outbox))
+        duplicate = self.client.post("/api/v1/stre/pay/verify/", {"token": token, "cf_order_id": "STRE26000001_1"})
+        self.assertEqual(duplicate.data["status"], "paid")
+        self.assertEqual(sum("payment confirmed" in message.subject.lower() for message in mail.outbox), 1)
 
     def test_wrong_order_or_short_amount_rejected(self):
         token, _, _ = self.start()
@@ -456,7 +530,7 @@ class StreBulkEmailAndPaymentFailureTests(StreBase):
         res = self.client.post("/api/v1/stre/admin/bulk-email/", {"exam": str(self.exam.id), "kind": "announcement", "subject": "Exam centre changed", "message": "The exam will be held in Hall B.\nReach by 9 AM."})
         self.assertEqual(res.data["queued"], 2)
         self.assertEqual(len(mail.outbox), 2)
-        self.assertEqual(mail.outbox[0].subject, "Exam centre changed")
+        self.assertEqual(mail.outbox[0].subject, "Oshitech STRE | Exam centre changed")
         self.assertIn("Hall B", mail.outbox[0].alternatives[0][0])
 
     def test_resend_failed_all(self):
@@ -482,6 +556,59 @@ class StreBulkEmailAndPaymentFailureTests(StreBase):
         school = make_school("q")
         self.client.force_authenticate(school["admin"])
         self.assertEqual(self.client.post("/api/v1/stre/admin/bulk-email/", {"exam": str(self.exam.id), "kind": "admit_card"}).status_code, 403)
+
+
+class StreCeleryTaskTests(StreBase):
+    def test_bulk_email_is_queued_outside_sync_mode(self):
+        self.register()
+        reg = StreRegistration.objects.get(email="riya@example.com")
+        entry = StreEmailLog.objects.create(
+            registration=reg, kind=StreEmailLog.Kind.ANNOUNCEMENT,
+            to_email="riya@example.com",
+        )
+        with override_settings(STRE_EMAIL_SYNC=False), mock.patch(
+            "apps.stre.tasks.process_stre_email_logs.delay"
+        ) as enqueue:
+            from apps.stre.views import run_email_job
+
+            run_email_job([entry.pk])
+        enqueue.assert_called_once_with([str(entry.pk)])
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, StreEmailLog.Status.QUEUED)
+
+    def test_email_task_processes_in_background_mode(self):
+        from apps.stre.tasks import process_stre_email_logs
+
+        with mock.patch("apps.stre.views._process_email_logs") as process:
+            process_stre_email_logs.run(["email-log-id"])
+        process.assert_called_once_with(["email-log-id"], background=True)
+
+    def test_bulk_email_queue_failure_marks_logs_failed(self):
+        self.register()
+        reg = StreRegistration.objects.get(email="riya@example.com")
+        entry = StreEmailLog.objects.create(
+            registration=reg, kind=StreEmailLog.Kind.ANNOUNCEMENT,
+            to_email="riya@example.com",
+        )
+        from apps.stre.views import run_email_job
+
+        with override_settings(STRE_EMAIL_SYNC=False), mock.patch(
+            "apps.stre.tasks.process_stre_email_logs.delay", side_effect=ConnectionError("Redis offline")
+        ), self.assertRaises(ValidationError):
+            run_email_job([entry.pk])
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, StreEmailLog.Status.FAILED)
+        self.assertIn("Redis offline", entry.error)
+
+    def test_payment_task_runs_guarded_background_worker(self):
+        from apps.stre import tasks
+
+        with mock.patch("apps.stre.tasks.payments.cashfree_enabled", return_value=True), mock.patch(
+            "apps.stre.views._auto_sync_worker"
+        ) as worker:
+            tasks.sync_stre_payments.run()
+        worker.assert_called_once_with(background=True)
+        self.assertIsNone(cache.get("stre-auto-sync"))
 
 
 class StreAdminEditTests(StreBase):
@@ -611,8 +738,9 @@ class StreOtpCaptchaTests(StreBase):
         res = self.client.post("/api/v1/stre/otp/send/", {"email": "Riya@Example.com"})
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(len(mail.outbox), 1)
-        code = mail.outbox[0].subject.split()[0]
-        self.assertTrue(code.isdigit() and len(code) == 6)
+        code_match = re.search(r"\b(\d{6})\b", mail.outbox[0].subject)
+        self.assertIsNotNone(code_match)
+        code = code_match.group(1)
         # turant dobara nahi
         self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com"}).status_code, 400)
         wrong = self.client.post("/api/v1/stre/otp/verify/", {"email": "riya@example.com", "code": "000000" if code != "000000" else "111111"})
@@ -624,9 +752,19 @@ class StreOtpCaptchaTests(StreBase):
         # registered email par dobara OTP nahi
         self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com"}).status_code, 400)
 
+    def test_otp_send_has_its_own_tight_throttle(self):
+        """OTP-send gets its own scope (stre_otp_send, 5/hour) separate from the general
+        `stre` scope (150/hour) — a bot spraying OTP requests across many emails must not
+        be able to use the generous general budget to email-bomb."""
+        for i in range(5):
+            res = self.client.post("/api/v1/stre/otp/send/", {"email": f"flood{i}@example.com"})
+            self.assertEqual(res.status_code, 200, res.data)
+        res = self.client.post("/api/v1/stre/otp/send/", {"email": "flood5@example.com"})
+        self.assertEqual(res.status_code, 429, res.data)
+
     def test_too_many_wrong_otp(self):
         self.client.post("/api/v1/stre/otp/send/", {"email": "x@example.com"})
-        code = mail.outbox[-1].subject.split()[0]
+        code = re.search(r"\b(\d{6})\b", mail.outbox[-1].subject).group(1)
         bad = "000000" if code != "000000" else "111111"
         for _ in range(5):
             self.client.post("/api/v1/stre/otp/verify/", {"email": "x@example.com", "code": bad})
@@ -707,7 +845,9 @@ class StreClassLevelTests(StreBase):
 
 
 class StreStuckPaidTests(StreBase):
-    def test_paid_without_admit_card_gets_one_automatically(self):
+    def test_paid_without_admit_card_gets_roll_no_but_no_auto_admit_card(self):
+        """Stuck/closed 'paid' registrations get a roll number from the sync worker, but the
+        admit card itself is never auto-issued — only an admin's explicit action issues it."""
         from apps.stre.views import _auto_sync_worker
         self.register()
         reg = StreRegistration.objects.get()
@@ -717,7 +857,7 @@ class StreStuckPaidTests(StreBase):
         reg.refresh_from_db()
         self.assertEqual(reg.status, "paid")
         self.assertTrue(reg.roll_no)
-        self.assertTrue(any("admit card" in m.subject.lower() for m in mail.outbox))
+        self.assertFalse(any("admit card" in m.subject.lower() for m in mail.outbox))
 
 class StreResultTests(StreBase):
     def setUp(self):
@@ -729,8 +869,10 @@ class StreResultTests(StreBase):
         for first, email, mobile in people:
             res = self.register(first_name=first, email=email, mobile=mobile)
             self.assertEqual(res.data["status"], "paid", res.data)
-        self.regs = list(StreRegistration.objects.order_by("roll_no"))
         self.client.force_authenticate(self.stre_admin)
+        gen = self.client.post("/api/v1/stre/admin/registrations/generate-admit-cards/", {"exam": str(self.exam.id), "send": "false"})
+        self.assertEqual(gen.data["issued"], 4, gen.data)  # results sirf admit-card-issued candidates ke liye bante hain
+        self.regs = list(StreRegistration.objects.order_by("roll_no"))
 
     def test_marks_rank_publish_result_and_certificate(self):
         r = [x.roll_no for x in self.regs]

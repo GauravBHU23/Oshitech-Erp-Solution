@@ -28,13 +28,22 @@ export default function StreCaptcha({ value, onChange, reloadKey = 0, error }: {
   return (
     <div className={`text-xs font-semibold text-slate-800 ${error ? "has-error" : ""}`}>
       <span className="block">Security check<span className="text-red-500"> *</span> <span className="font-normal text-slate-500">— type the letters you see</span></span>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <span className="stre-captcha-img grid h-[60px] w-[190px] place-items-center overflow-hidden rounded-xl border border-slate-200 bg-violet-50">
-          {src ? <img src={src} alt="Captcha: type the characters shown" width={190} height={60} draggable={false} className="select-none" /> : <span className="text-[11px] text-slate-400">Loading…</span>}
+      <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+        <span className="stre-captcha-img grid h-[52px] w-[150px] shrink-0 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm sm:w-[170px]">
+          {src ? <img src={src} alt="Captcha: type the characters shown" width={170} height={52} draggable={false} className="h-full w-full select-none object-cover" /> : <span className="text-[11px] text-slate-400">Loading…</span>}
         </span>
-        <button type="button" className="btn-ghost inline-flex items-center gap-1.5 !px-3" onClick={load} disabled={loading} aria-label="Refresh captcha" title="Refresh captcha"><span aria-hidden="true" className={`text-lg leading-none ${loading ? "animate-spin" : ""}`}>↻</span><span>Refresh</span></button>
+        <button
+          type="button"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-indigo-600"
+          onClick={load}
+          disabled={loading}
+          aria-label="Refresh captcha"
+          title="Refresh captcha"
+        >
+          <span aria-hidden="true" className={`block text-base leading-none ${loading ? "animate-spin" : ""}`}>↻</span>
+        </button>
         <input
-          className="input !w-36 text-center font-mono uppercase tracking-[.3em]"
+          className="input min-w-0 flex-1 text-center font-mono uppercase tracking-[.3em] sm:w-36 sm:flex-none"
           aria-label="Captcha answer"
           autoComplete="off"
           autoCapitalize="characters"

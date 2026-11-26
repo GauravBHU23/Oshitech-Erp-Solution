@@ -1,4 +1,4 @@
-// Runtime validation coverage for: persistent, synchronized color theme.
+// Runtime validation coverage for: light default and synchronized color theme.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,8 +14,8 @@ describe("ThemeToggle", () => {
 
   beforeEach(() => {
     localStorage.clear();
-    document.documentElement.removeAttribute("data-theme");
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+    document.documentElement.dataset.theme = "light";
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -27,29 +27,29 @@ describe("ThemeToggle", () => {
     vi.unstubAllGlobals();
   });
 
-  it("applies a saved preference when mounted", () => {
+  it("keeps the current light theme despite saved or system dark preferences", () => {
     localStorage.setItem("oshitech-theme", "dark");
 
     act(() => root.render(<ThemeToggle />));
 
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(container.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(container.querySelector("button")?.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("persists a toggle and synchronizes every mounted control", () => {
+  it("toggles the theme and synchronizes every mounted control without persisting it", () => {
     act(() => root.render(<><ThemeToggle /><ThemeToggle /></>));
     const buttons = container.querySelectorAll("button");
 
     act(() => buttons[0].click());
 
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(localStorage.getItem("oshitech-theme")).toBe("dark");
+    expect(localStorage.getItem("oshitech-theme")).toBeNull();
     expect(buttons[1].getAttribute("aria-pressed")).toBe("true");
 
     act(() => buttons[1].click());
 
     expect(document.documentElement.dataset.theme).toBe("light");
-    expect(localStorage.getItem("oshitech-theme")).toBe("light");
+    expect(localStorage.getItem("oshitech-theme")).toBeNull();
     expect(buttons[0].getAttribute("aria-pressed")).toBe("false");
   });
 });

@@ -2,7 +2,6 @@ import csv
 import datetime
 import logging
 import re
-import threading
 
 from django.conf import settings
 from django.core.cache import cache
@@ -26,7 +25,7 @@ from apps.core.roles import Role
 from apps.core.throttles import AtomicAnonRateThrottle, AtomicScopedRateThrottle
 
 from . import emails, payments, security
-from .pdf import create_admit_card_pdf
+from .pdf import create_admit_card_pdf, create_registration_pdf
 from .models import StreEmailLog, StreExam, StreNotice, StreRegistration, StreSubject, StreSupportTicket, class_level_label
 from .serializers import (
     INTEREST_OPTIONS,
@@ -59,6 +58,24 @@ class IsStreAdmin(BasePermission):
 
 class StreThrottle(AtomicScopedRateThrottle):
     scope = "stre"
+
+
+class CashfreeWebhookThrottle(AtomicScopedRateThrottle):
+    """Trusted server-to-server callback from Cashfree, not public traffic — its own
+    generous budget so a flood of garbage requests can't also eat into candidate-facing limits."""
+    scope = "stre_webhook"
+
+
+class StreOtpSendThrottle(AtomicScopedRateThrottle):
+    """Own (tight) budget, separate from the general `stre` scope — an OTP-send endpoint
+    is a classic email-bombing target and must not share headroom with ordinary browsing."""
+    scope = "stre_otp_send"
+
+
+class StreOtpVerifyThrottle(AtomicScopedRateThrottle):
+    """Own (tight) budget — guards against brute-forcing the 6-digit OTP code by request
+    volume, on top of security.verify_otp()'s own per-code OTP_MAX_ATTEMPTS limit."""
+    scope = "stre_otp_verify"
 
 
 def _safe_form_url():
@@ -134,13 +151,19 @@ def _auto_sync_worker(background=False):
 
 
 def auto_sync_payments():
-    """Pending Cashfree payments apne aap confirm karo (har 2 minute me max ek baar, background me)."""
-    if not payments.cashfree_enabled() or not cache.add("stre-auto-sync", 1, 120):
+    """Queue a guarded Cashfree sync; Celery Beat also runs it every two minutes."""
+    if not payments.cashfree_enabled() or not cache.add("stre-auto-sync-enqueue", 1, 120):
         return
     if getattr(settings, "STRE_EMAIL_SYNC", False):
         _auto_sync_worker()
     else:
-        threading.Thread(target=_auto_sync_worker, kwargs={"background": True}, daemon=True).start()
+        try:
+            from .tasks import sync_stre_payments
+
+            sync_stre_payments.delay()
+        except Exception:  # noqa: BLE001 — don't break a public request; surface dispatch failure in logs
+            cache.delete("stre-auto-sync-enqueue")
+            log.exception("Could not queue STRE payment sync")
 
 
 class PublicInfoView(APIView):
@@ -150,25 +173,35 @@ class PublicInfoView(APIView):
 
     def get(self, request):
         auto_sync_payments()
-        exam = current_exam()
+        data = cache.get_or_set("stre-public-info", self._cached_payload, timeout=30)
         return Response({
+            **data,
+            "results_published": StreExam.objects.filter(results_published=True).exists(),
+            "payment": self._payment_data(),
+        })
+
+    @staticmethod
+    def _cached_payload():
+        exam = current_exam()
+        return {
             "exam": None if exam is None else {
                 "title": exam.title, "code": exam.code, "exam_date": exam.exam_date, "exam_time": exam.exam_time,
                 "last_date": exam.last_date, "fee": exam.fee, "venue": exam.venue, "instructions": exam.instructions,
             },
             "subjects": list(StreSubject.objects.filter(is_active=True).values_list("name", flat=True)),
-            # Result admin ke ON karne par hi website par dikhe
-            "results_published": StreExam.objects.filter(results_published=True).exists(),
             "interest_options": INTEREST_OPTIONS,
-            "payment": {
-                "online": online_checkout_enabled(),
-                "provider": payments.provider() if online_checkout_enabled() else None,
-                "cashfree_mode": payments.cashfree_mode() if payments.cashfree_enabled() else None,
-                "upi_id": getattr(settings, "STRE_UPI_ID", "") if manual_payment_enabled() else "",
-                "form_url": _safe_form_url() if manual_payment_enabled() else "",
-                "payee_name": getattr(settings, "STRE_PAYEE_NAME", ""),
-            },
-        })
+        }
+
+    @staticmethod
+    def _payment_data():
+        return {
+            "online": online_checkout_enabled(),
+            "provider": payments.provider() if online_checkout_enabled() else None,
+            "cashfree_mode": payments.cashfree_mode() if payments.cashfree_enabled() else None,
+            "upi_id": getattr(settings, "STRE_UPI_ID", "") if manual_payment_enabled() else "",
+            "form_url": _safe_form_url() if manual_payment_enabled() else "",
+            "payee_name": getattr(settings, "STRE_PAYEE_NAME", ""),
+        }
 
 
 class RegisterView(APIView):
@@ -216,6 +249,7 @@ class StatusView(APIView):
             "payment_attempts": reg.payment_attempts,
             "last_payment_status": reg.last_payment_status,
             "last_payment_error": reg.last_payment_error,
+            "results_published": reg.exam.results_published,
         }
 
     def get(self, request):
@@ -290,9 +324,14 @@ class PayVerifyView(APIView):
             raise ValidationError({"detail": "Payment could not be verified. If money was deducted, contact the exam cell with your registration number."})
         if not payments.verify_signature(order_id, payment_id, request.data.get("razorpay_signature", "")):
             raise ValidationError({"detail": "Payment signature is invalid. If money was deducted, contact the exam cell."})
-        if not reg.is_paid:
-            reg.razorpay_payment_id = payment_id
-            reg.mark_paid("razorpay", payment_id)
+        paid_now = False
+        with transaction.atomic():
+            reg = StreRegistration.objects.select_for_update().select_related("exam").get(pk=reg.pk)
+            if not reg.is_paid:
+                reg.razorpay_payment_id = payment_id
+                reg.mark_paid("razorpay", payment_id)
+                paid_now = True
+        if paid_now:
             after_payment(reg)
             reg.refresh_from_db()
         return Response(StrePublicRegistrationSerializer(reg).data)
@@ -369,6 +408,7 @@ class CashfreeWebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     parser_classes = [parsers.JSONParser]
+    throttle_classes = [CashfreeWebhookThrottle]
 
     def post(self, request):
         raw = request.body
@@ -456,9 +496,31 @@ class AdmitCardDownloadView(APIView):
         return response
 
 
+class RegistrationDownloadView(APIView):
+    """Registration confirmation PDF — available as soon as payment succeeds, from the
+    status-check page. Independent of the admit card (issued later, separately)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [StreThrottle]
+
+    PAID_STATUSES = (StreRegistration.Status.PAID, StreRegistration.Status.ADMIT_CARD_ISSUED)
+
+    def get(self, request, token):
+        reg = _by_token(token)
+        if reg.status not in self.PAID_STATUSES:
+            raise ValidationError({"detail": "Your payment has not been confirmed yet. Please complete payment first."})
+        response = HttpResponse(create_registration_pdf(reg, getattr(settings, "SITE_URL", "")), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="STRE-Registration-{reg.registration_no}.pdf"'
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
 class CandidateFileView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [StreThrottle]
 
     def get(self, request, token, kind):
         reg = _by_token(token)
@@ -829,7 +891,9 @@ def _process_email_logs(log_ids, background=False):
             connection.open()
         except Exception:  # noqa: BLE001 — connection na khule to har mail khud koshish karegi
             connection = None
-        for log_entry in StreEmailLog.objects.select_related("registration__exam").filter(pk__in=log_ids):
+        for log_entry in StreEmailLog.objects.select_related("registration__exam").filter(
+            pk__in=log_ids, status=StreEmailLog.Status.QUEUED,
+        ):
             reg = log_entry.registration
             if log_entry.kind == StreEmailLog.Kind.ADMIT_CARD:
                 if reg.status != StreRegistration.Status.ADMIT_CARD_ISSUED:
@@ -851,13 +915,23 @@ def _process_email_logs(log_ids, background=False):
 
 
 def run_email_job(log_ids):
-    """Badi list ho to background thread me (request turant wapas); tests me seedha."""
-    if getattr(settings, "STRE_EMAIL_SYNC", False) or not log_ids:
+    """Send synchronously in tests; queue bulk email delivery in production."""
+    if not log_ids:
+        return
+    if getattr(settings, "STRE_EMAIL_SYNC", False):
         _process_email_logs(log_ids)
         return
-    import threading
+    try:
+        from .tasks import process_stre_email_logs
 
-    threading.Thread(target=_process_email_logs, args=(list(log_ids),), kwargs={"background": True}, daemon=True).start()
+        process_stre_email_logs.delay([str(log_id) for log_id in log_ids])
+    except Exception as exc:  # noqa: BLE001 — mark logs failed and report queue failures to the admin
+        StreEmailLog.objects.filter(pk__in=log_ids, status=StreEmailLog.Status.QUEUED).update(
+            status=StreEmailLog.Status.FAILED,
+            error=f"Celery queue error: {exc}"[:500],
+        )
+        log.exception("Could not queue STRE email delivery")
+        raise ValidationError({"detail": "Emails could not be queued. Check the Celery/Redis service and retry."}) from exc
 
 
 class StreBulkEmailView(APIView):
@@ -1039,7 +1113,7 @@ class StreNoticeFileView(APIView):
 class StreOtpSendView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [StreThrottle]
+    throttle_classes = [StreOtpSendThrottle]
 
     def post(self, request):
         from django.core.exceptions import ValidationError as DjangoValidationError
@@ -1062,7 +1136,7 @@ class StreOtpSendView(APIView):
 class StreOtpVerifyView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [StreThrottle]
+    throttle_classes = [StreOtpVerifyThrottle]
 
     def post(self, request):
         email = str(request.data.get("email", "")).strip().lower()

@@ -1,4 +1,5 @@
 "use client";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NGROK_SKIP_BROWSER_WARNING_HEADERS } from "@/lib/api";
 import { formatDate } from "@/lib/stre";
@@ -8,12 +9,13 @@ import StreShell from "@/components/StreShell";
 type Verify = { valid: boolean; full_name?: string; roll_no?: string; exam_title?: string; exam_date?: string; award?: string; rank?: number | null; marks?: number | null; total_marks?: number } | null;
 
 /** Certificate ke QR se: certificate asli hai ya nahi. */
-export default function VerifyCertificatePage({ params }: { params: { code: string } }) {
+export default function VerifyCertificatePage() {
+  const { code } = useParams<{ code: string }>();
   const [v, setV] = useState<Verify>(null);
   useEffect(() => {
-    fetch(`/api/v1/stre/certificate/verify/${encodeURIComponent(params.code)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
+    fetch(`/api/v1/stre/certificate/verify/${encodeURIComponent(code)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
       .then((r) => r.json()).then(setV).catch(() => setV({ valid: false }));
-  }, [params.code]);
+  }, [code]);
 
   return (
     <StreShell support={false}>

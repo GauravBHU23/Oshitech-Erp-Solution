@@ -238,3 +238,166 @@ def create_admit_card_pdf(registration, site_url):
     pdf.showPage()
     pdf.save()
     return buffer.getvalue()
+
+
+def create_registration_pdf(registration, site_url):
+    """Registration confirmation PDF — available as soon as payment succeeds (paid or
+    admit_card_issued), independent of the admit card itself (which is issued later by
+    the exam cell and carries a roll number this document never has)."""
+    exam = registration.exam
+    buffer = BytesIO()
+    page_width, page_height = A4
+    pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    pdf.setTitle(f"STRE Registration - {registration.registration_no}")
+    pdf.setAuthor("STRE Exam Cell")
+
+    margin = 38
+    content_width = page_width - 2 * margin
+
+    pdf.setFillColor(INDIGO)
+    pdf.rect(0, page_height - 105, page_width, 105, fill=1, stroke=0)
+    crest_cx, crest_cy, crest_r = margin + 20, page_height - 52, 20
+    pdf.setFillColor(colors.white)
+    pdf.circle(crest_cx, crest_cy, crest_r, fill=1, stroke=0)
+    pdf.setFillColor(INDIGO)
+    pdf.setFont("Helvetica-Bold", 20)
+    pdf.drawCentredString(crest_cx, crest_cy - 7, "O")
+    pdf.setFillColor(colors.HexColor("#c7d2fe"))
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.drawCentredString(page_width / 2, page_height - 32, "STUDENT TALENT RECOGNITION EXAM")
+    pdf.setFillColor(colors.white)
+    pdf.setFont("Helvetica-Bold", 19)
+    pdf.drawCentredString(page_width / 2, page_height - 58, _text(exam.title).upper())
+    pdf.setFont("Helvetica", 10)
+    pdf.drawCentredString(page_width / 2, page_height - 77, f"REGISTRATION CONFIRMATION  |  {_text(exam.code)}")
+    pdf.setStrokeColor(colors.HexColor("#22c55e"))
+    pdf.setLineWidth(3)
+    pdf.line(0, page_height - 105, page_width, page_height - 105)
+
+    y = page_height - 132
+    pdf.setFillColor(PALE)
+    pdf.setStrokeColor(LINE)
+    pdf.roundRect(margin, y - 54, content_width, 54, 9, fill=1, stroke=1)
+    pdf.setFillColor(VIOLET)
+    pdf.setFont("Helvetica-Bold", 8)
+    pdf.drawString(margin + 14, y - 18, "REGISTRATION NUMBER")
+    pdf.setFillColor(INDIGO)
+    pdf.setFont("Helvetica-Bold", 21)
+    pdf.drawString(margin + 14, y - 43, _text(registration.registration_no))
+    pdf.setFillColor(colors.HexColor("#15803d"))
+    pdf.setFont("Helvetica-Bold", 8)
+    pdf.drawRightString(page_width - margin - 14, y - 18, "PAYMENT STATUS")
+    pdf.setFillColor(colors.HexColor("#15803d"))
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawRightString(page_width - margin - 14, y - 40, "PAID" if registration.amount else "NO FEE DUE")
+    y -= 70
+
+    pdf.setFillColor(VIOLET)
+    pdf.rect(margin, y - 18, 3, 18, fill=1, stroke=0)
+    pdf.setFillColor(INDIGO)
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(margin + 9, y - 13, "CANDIDATE DETAILS")
+
+    photo_width, photo_height = 78, 100
+    photo_x, photo_y = page_width - margin - photo_width, y - 132
+    pdf.setStrokeColor(LINE)
+    pdf.setFillColor(colors.white)
+    pdf.roundRect(photo_x, photo_y, photo_width, photo_height, 4, fill=1, stroke=1)
+    _draw_image(pdf, registration.photo, photo_x + 3, photo_y + 3, photo_width - 6, photo_height - 6)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica", 7)
+    pdf.drawCentredString(photo_x + photo_width / 2, photo_y - 10, "CANDIDATE PHOTO")
+
+    fields = [
+        ("Candidate name", registration.full_name),
+        ("Father's name", registration.father_name),
+        ("Subject", registration.subject),
+        ("Class / Qualification", class_level_label(registration.class_level) or "—"),
+        ("School / College", registration.school_name or "—"),
+        ("Mobile", registration.mobile),
+        ("Email", registration.email),
+        ("Registered on", registration.created_at.strftime("%d %b %Y")),
+    ]
+    details_x = margin
+    details_width = content_width - photo_width - 16
+    col_gap = 12
+    col_width = (details_width - col_gap) / 2
+    field_height = 31
+    for index, (label, value) in enumerate(fields):
+        row, col = divmod(index, 2)
+        x = details_x + col * (col_width + col_gap)
+        top = y - 25 - row * field_height
+        pdf.setStrokeColor(LINE)
+        pdf.line(x, top - 22, x + col_width, top - 22)
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(x, top - 8, _text(label).upper())
+        pdf.setFillColor(SLATE)
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawString(x, top - 19, _text(value)[:55])
+
+    y -= 4 * field_height + 32
+
+    pdf.setFillColor(VIOLET)
+    pdf.rect(margin, y - 18, 3, 18, fill=1, stroke=0)
+    pdf.setFillColor(INDIGO)
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(margin + 9, y - 13, "PAYMENT DETAILS")
+    y -= 28
+
+    payment_cells = [
+        ("AMOUNT PAID", f"Rs. {registration.amount:,.2f}" if registration.amount else "No fee due"),
+        ("PAYMENT METHOD", (registration.payment_method or "—").upper()),
+        ("PAYMENT REFERENCE", registration.payment_reference or "—"),
+    ]
+    cell_gap = 8
+    cell_width = (content_width - 2 * cell_gap) / 3
+    for index, (label, value) in enumerate(payment_cells):
+        x = margin + index * (cell_width + cell_gap)
+        pdf.setFillColor(PALE)
+        pdf.setStrokeColor(LINE)
+        pdf.roundRect(x, y - 43, cell_width, 43, 5, fill=1, stroke=1)
+        pdf.setFillColor(MUTED)
+        pdf.setFont("Helvetica-Bold", 7)
+        pdf.drawString(x + 8, y - 15, label)
+        pdf.setFillColor(SLATE)
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.drawString(x + 8, y - 31, _text(value)[:28])
+    y -= 60
+
+    pdf.setFillColor(INDIGO)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(margin, y, "WHAT HAPPENS NEXT")
+    y -= 14
+    next_steps = [
+        "Keep this confirmation safe — it is proof of a successful registration and payment.",
+        "The exam cell will issue your admit card closer to the exam date.",
+        "Check your registration status anytime with your registration number and mobile number.",
+    ]
+    for index, step in enumerate(next_steps, start=1):
+        pdf.setFillColor(VIOLET)
+        pdf.setFont("Helvetica-Bold", 8)
+        pdf.drawString(margin + 2, y, f"{index}.")
+        pdf.setFillColor(SLATE)
+        y = _draw_wrapped(pdf, step, margin + 18, y, content_width - 18, size=8, leading=10, max_lines=2) - 2
+
+    qr = QrCodeWidget(f"{site_url.rstrip('/')}/stre/status?token={registration.access_token}")
+    bounds = qr.getBounds()
+    qr_size = 58
+    drawing = Drawing(qr_size, qr_size, transform=[
+        qr_size / (bounds[2] - bounds[0]), 0, 0,
+        qr_size / (bounds[3] - bounds[1]), 0, 0,
+    ])
+    drawing.add(qr)
+    renderPDF.draw(drawing, pdf, page_width - margin - qr_size, 30)
+    pdf.setFillColor(MUTED)
+    pdf.setFont("Helvetica", 6)
+    pdf.drawCentredString(page_width - margin - qr_size / 2, 22, "SCAN FOR STATUS")
+    pdf.setStrokeColor(LINE)
+    pdf.line(margin, 28, page_width - margin - qr_size - 10, 28)
+    pdf.setFont("Helvetica", 7)
+    pdf.drawString(margin, 16, f"Generated {registration.updated_at:%d %b %Y} | Computer-generated registration confirmation")
+
+    pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()

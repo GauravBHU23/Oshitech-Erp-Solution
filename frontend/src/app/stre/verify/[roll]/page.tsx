@@ -1,4 +1,5 @@
 "use client";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatDate } from "@/lib/stre";
 import { NGROK_SKIP_BROWSER_WARNING_HEADERS } from "@/lib/api";
@@ -7,12 +8,13 @@ import StreShell from "@/components/StreShell";
 
 type Result = { valid: boolean; full_name?: string; roll_no?: string; exam?: string; exam_date?: string } | null;
 
-export default function StreVerifyPage({ params }: { params: { roll: string } }) {
+export default function StreVerifyPage() {
+  const { roll } = useParams<{ roll: string }>();
   const [result, setResult] = useState<Result>(null);
   useEffect(() => {
-    fetch(`/api/v1/stre/verify/${encodeURIComponent(params.roll)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
+    fetch(`/api/v1/stre/verify/${encodeURIComponent(roll)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
       .then((r) => r.json()).then(setResult).catch(() => setResult({ valid: false }));
-  }, [params.roll]);
+  }, [roll]);
 
   return (
     <StreShell>

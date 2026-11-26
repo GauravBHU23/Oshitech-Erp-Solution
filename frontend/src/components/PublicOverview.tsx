@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Icon from "@/components/Icon";
 
-type Overview = { schools: number; students: number; teachers: number };
+type Overview = { schools: number; students: number; teachers: number; stre_registrations: number };
 
 const metrics = [
-  { key: "schools", label: "Active schools", icon: "school", tone: "bg-indigo-50 text-indigo-700" },
-  { key: "students", label: "Active students", icon: "student", tone: "bg-emerald-50 text-emerald-700" },
-  { key: "teachers", label: "Active teachers", icon: "teacher", tone: "bg-sky-50 text-sky-700" },
+  { key: "schools", label: "Active Schools", icon: "school", tone: "bg-indigo-50 text-indigo-700" },
+  { key: "students", label: "Active Students", icon: "student", tone: "bg-emerald-50 text-emerald-700" },
+  { key: "teachers", label: "Active Teachers", icon: "teacher", tone: "bg-sky-50 text-sky-700" },
+  { key: "stre_registrations", label: "STRE Exam Registration", icon: "exam", tone: "bg-violet-50 text-violet-700" },
 ] as const;
 
 export default function PublicOverview() {
@@ -32,8 +33,8 @@ export default function PublicOverview() {
       <div className="mx-auto max-w-5xl">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-[11px] font-bold uppercase tracking-[.2em] text-indigo-600">Our community</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Schools, students and teachers at a glance.</h2>
-          <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">A live overview of active school communities on Oshitech.</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Our community at a glance.</h2>
+          <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Live totals for active school communities and STRE exam registrations.</p>
         </div>
         {error ? (
           <div role="alert" className="mx-auto mt-8 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
@@ -41,7 +42,7 @@ export default function PublicOverview() {
             <button type="button" onClick={loadOverview} className="mt-2 font-semibold underline underline-offset-2">Try again</button>
           </div>
         ) : (
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {metrics.map((metric, index) => (
               <article
                 key={metric.key}

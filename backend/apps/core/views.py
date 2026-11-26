@@ -55,6 +55,8 @@ class PublicSiteOverviewView(APIView):
     throttle_classes = [AtomicAnonRateThrottle]
 
     def get(self, request):
+        from apps.stre.models import StreRegistration
+
         return Response({
             "schools": School.objects.filter(is_active=True).count(),
             "students": Student.objects.filter(
@@ -62,6 +64,9 @@ class PublicSiteOverviewView(APIView):
             ).count(),
             "teachers": Teacher.objects.filter(
                 is_active=True, user__is_active=True, school__is_active=True
+            ).count(),
+            "stre_registrations": StreRegistration.objects.exclude(
+                status=StreRegistration.Status.CANCELLED
             ).count(),
         })
 

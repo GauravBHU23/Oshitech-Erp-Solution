@@ -140,12 +140,12 @@ export function InstallAppCard({ variant = "footer" }: { variant?: "footer" | "s
   const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/+$/, "");
 
   return (
-    <div className="install-card rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-500/15 to-cyan-500/10 p-4">
-      <div className="flex items-center gap-3">
-        <img src="/icons/icon-192.png" alt="" width={44} height={44} className="h-11 w-11 shrink-0 rounded-xl shadow-lg shadow-indigo-950/40" />
+    <div className="marketing-footer__install-card install-card rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="install-card__header flex items-center gap-3">
+        <img src="/icons/icon-192.png" alt="" width={44} height={44} className="install-card__icon h-11 w-11 shrink-0 rounded-xl shadow-lg shadow-indigo-950/40" />
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-white">Oshitech ERP app</p>
-          <p className="text-[11px] leading-4 text-slate-400">Works offline-ready, opens like a mobile app.</p>
+          <p className="install-card__title text-sm font-semibold text-slate-900">Oshitech ERP</p>
+          <p className="install-card__description text-[11px] leading-4 text-slate-600">Works offline and opens like an app.</p>
         </div>
       </div>
       {state === "installable" && (
@@ -153,13 +153,13 @@ export function InstallAppCard({ variant = "footer" }: { variant?: "footer" | "s
           <Icon name="download" size={16} />{busy ? "Installing…" : "Install app"}
         </button>
       )}
-      {state === "installed" && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-300"><Icon name="check" size={14} />App installed on this device</p>}
-      {state === "ios" && <p className="mt-3 text-xs leading-5 text-slate-300">On iPhone / iPad: open in <b>Safari</b> → tap <b>Share</b> → <b>Add to Home Screen</b>.</p>}
-      {state === "manual" && <p className="mt-3 text-xs leading-5 text-slate-300">Open this site in <b>Chrome</b> or <b>Edge</b> and choose <b>Install app</b> (or <b>Add to Home screen</b>) from the browser menu ⋮.</p>}
+      {state === "installed" && <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Icon name="check" size={14} />App installed on this device</p>}
+      {state === "ios" && <p className="mt-3 text-xs leading-5 text-slate-600">On iPhone / iPad: open in <b>Safari</b> → tap <b>Share</b> → <b>Add to Home Screen</b>.</p>}
+      {state === "manual" && <p className="mt-3 text-xs leading-5 text-slate-600">Open this site in <b>Chrome</b> or <b>Edge</b> and choose <b>Install app</b> (or <b>Add to Home screen</b>) from the browser menu ⋮.</p>}
       {state !== "installed" && siteUrl && (
-        <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.06] p-2.5">
-          <div className="shrink-0 rounded-lg bg-white p-1.5"><QRCodeSVG value={siteUrl} size={52} level="M" bgColor="#ffffff" fgColor="#172238" /></div>
-          <p className="text-[11px] leading-4 text-slate-400">Scan with your phone's camera to open this site and install from there.</p>
+        <div className="install-card__qr mt-3 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-2.5">
+          <div className="install-card__qr-code shrink-0 rounded-xl bg-white p-2"><QRCodeSVG value={siteUrl} size={52} level="M" bgColor="#ffffff" fgColor="#172238" /></div>
+          <p className="install-card__qr-hint text-[11px] leading-4 text-indigo-700">Scan to open and install the app.</p>
         </div>
       )}
     </div>

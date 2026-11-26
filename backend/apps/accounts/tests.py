@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -215,7 +216,7 @@ class PasswordManagementTests(APITestCase):
 
 
 class SessionTimeoutTests(APITestCase):
-    """30 min idle + 12 ghante ki pakki seema."""
+    """Idle timeout + absolute session ceiling (values come from settings)."""
 
     def setUp(self):
         from django.core.cache import cache
@@ -237,7 +238,7 @@ class SessionTimeoutTests(APITestCase):
 
     def test_login_returns_session_info_and_refresh_keeps_auth_time(self):
         res = self.login()
-        self.assertEqual(res.data["session"]["idle_minutes"], 30)
+        self.assertEqual(res.data["session"]["idle_minutes"], settings.SESSION_IDLE_MINUTES)
         self.assertIn("expires_at", res.data["session"])
         r = self.refresh()
         self.assertEqual(r.status_code, 200, r.data)
@@ -245,6 +246,24 @@ class SessionTimeoutTests(APITestCase):
         token = RefreshToken(self.client.cookies["refresh_token"].value)
         self.assertTrue(token.get("auth_time"))
         self.assertTrue(token.get("sid"))
+
+    def test_second_login_logs_out_the_first_session(self):
+        """Ek account, ek hi active session: naya login purane device ka session turant revoke kare."""
+        from django.test import Client
+
+        first_device = self.login()
+        first_access_cookie = first_device.cookies["access_token"].value
+
+        # Dusre device se same account se login
+        self.client.cookies.clear()
+        self.login()
+
+        # Pehle device ka access cookie ab bhi cryptographically valid hai, lekin server-side
+        # session revoke ho chuka hai -- isliye agli request turant reject honi chahiye.
+        first_device_client = Client()
+        first_device_client.cookies["access_token"] = first_access_cookie
+        res = first_device_client.get("/api/v1/auth/me/")
+        self.assertEqual(res.status_code, 401, res.content)
 
     def test_logout_revokes_access_token_immediately(self):
         self.login()
@@ -288,8 +307,10 @@ class ForgotPasswordTests(APITestCase):
         self.student = make_student(self.data, 1)  # s1@f.com
 
     def code(self):
+        import re
+
         from django.core import mail
-        return mail.outbox[-1].subject.split()[0]
+        return re.search(r"Verification code:\s*(\d+)", mail.outbox[-1].body).group(1)
 
     def test_full_reset_flow(self):
         from django.core import mail

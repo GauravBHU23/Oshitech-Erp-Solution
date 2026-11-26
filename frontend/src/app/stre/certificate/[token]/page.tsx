@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
@@ -8,17 +9,18 @@ import Icon from "@/components/Icon";
 import type { StreResultData } from "@/components/StreResultCard";
 
 /** Merit / participation certificate: A4 landscape, print / Save as PDF, QR se verify. */
-export default function StreCertificatePage({ params }: { params: { token: string } }) {
+export default function StreCertificatePage() {
+  const { token } = useParams<{ token: string }>();
   const [r, setR] = useState<StreResultData | null>(null);
   const [error, setError] = useState("");
   const [origin, setOrigin] = useState("");
 
   useEffect(() => {
     setOrigin((process.env.NEXT_PUBLIC_APP_URL || window.location.origin).replace(/\/+$/, ""));
-    api<StreResultData>(`/stre/result/?token=${encodeURIComponent(params.token)}`, { silent: true })
+    api<StreResultData>(`/stre/result/?token=${encodeURIComponent(token)}`, { silent: true })
       .then((d) => (d.award ? setR(d) : setError("A certificate is given only to candidates who appeared in the exam.")))
       .catch((e) => setError(e instanceof ApiError ? e.message.replace(/^detail:\s*/, "") : "Could not load the certificate."));
-  }, [params.token]);
+  }, [token]);
 
   const merit = r?.award === "Certificate of Merit";
 
@@ -26,7 +28,7 @@ export default function StreCertificatePage({ params }: { params: { token: strin
     <main className="certificate-page stre-page min-h-screen bg-[#f6f7fb] px-3 py-4 sm:px-6 sm:py-8">
       <style>{`@media print { @page { size: A4 landscape; margin: 0; } .certificate-page { padding: 0 !important; background: #fff !important; } .cert-sheet { box-shadow: none !important; border-radius: 0 !important; width: 297mm !important; height: 210mm !important; max-width: none !important; } }`}</style>
       <div className="no-print mx-auto mb-4 flex max-w-[1000px] flex-wrap items-center justify-between gap-2">
-        <Link href={`/stre/result?token=${params.token}`} className="btn-ghost"><Icon name="arrow" size={15} className="mr-2 rotate-180" />Back to result</Link>
+        <Link href={`/stre/result?token=${token}`} className="btn-ghost"><Icon name="arrow" size={15} className="mr-2 rotate-180" />Back to result</Link>
         <button className="btn-primary" disabled={!r} onClick={() => window.print()}><Icon name="printer" size={16} className="mr-2" />Print / Save as PDF</button>
       </div>
       {error && <p role="alert" className="no-print mx-auto max-w-md rounded-2xl bg-amber-50 p-4 text-center text-sm text-amber-900">{error}</p>}

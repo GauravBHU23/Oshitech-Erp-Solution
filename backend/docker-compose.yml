@@ -18,6 +18,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  pgbouncer:
+    # Own small image (./pgbouncer), not a third-party one: every pgbouncer image we
+    # evaluated (edoburu/pgbouncer, and the others it's forked from) parses DATABASE_URL
+    # with shell grep/cut/sed, which breaks on a password containing '@' or ':' — exactly
+    # what this project's real DATABASE_URL has. Our own entrypoint.py parses it with
+    # dj_database_url (the same library Django uses) instead.
+    build: ./pgbouncer
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in backend/.env}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${POSTGRES_USER:-erp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   migrate:
     build: .
     env_file: .env
@@ -33,30 +50,86 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in backend/.env}
+      # Through PgBouncer, not straight to Postgres — pools connections across all
+      # Gunicorn/Celery workers so traffic spikes don't exhaust Postgres's own connection
+      # limit. Migrations stay on the direct DATABASE_URL (see `migrate`, above) since
+      # PgBouncer's transaction-pooling mode doesn't suit every migration operation.
+      DATABASE_URL: ${POOLED_DATABASE_URL:?Set POOLED_DATABASE_URL in backend/.env}
+      CELERY_BROKER_URL: redis://redis:6379/0
     depends_on:
       migrate:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes: ["mediafiles:/app/media"]
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  fast-backend:
+    build:
+      context: ../fast-backend
+    env_file: .env
+    environment:
+      DATABASE_URL: ${POOLED_DATABASE_URL:?Set POOLED_DATABASE_URL in backend/.env}
+      REDIS_CACHE_URL: redis://redis:6379/2
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --root-path /fast-api --proxy-headers --forwarded-allow-ips=*
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
   celery:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in backend/.env}
+      DATABASE_URL: ${POOLED_DATABASE_URL:?Set POOLED_DATABASE_URL in backend/.env}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
       migrate:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A config worker -l info
+  celery-beat:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: ${POOLED_DATABASE_URL:?Set POOLED_DATABASE_URL in backend/.env}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A config beat -l info
   frontend:
-    build: ../frontend
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     environment:
       NODE_ENV: production
       API_URL: http://backend:8000
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     depends_on:
       - backend
   loadbalancer:
@@ -69,13 +142,59 @@ services:
       - staticfiles:/var/www/static:ro
     depends_on:
       - backend
+      - fast-backend
       - frontend
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
       interval: 10s
       timeout: 5s
       retries: 5
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.5.12
+    restart: unless-stopped
+    ports: ["127.0.0.1:${UPTIME_KUMA_PORT:-3001}:3001"]
+    volumes: [uptime_data:/app/data]
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:3.4
+    restart: unless-stopped
+    ports: ["127.0.0.1:${DOCKER_SOCKET_PROXY_PORT:-2376}:2375"]
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+  netdata:
+    image: netdata/netdata:stable
+    restart: unless-stopped
+    pid: host
+    network_mode: host
+    cap_add: [SYS_PTRACE, SYS_ADMIN]
+    security_opt: ["apparmor:unconfined"]
+    environment:
+      DOCKER_HOST: tcp://127.0.0.1:${DOCKER_SOCKET_PROXY_PORT:-2376}
+      NETDATA_HOST_PREFIX: /host
+      NETDATA_LISTENER_PORT: ${NETDATA_PORT:-19999}
+      DO_NOT_TRACK: "1"
+    depends_on:
+      - docker-socket-proxy
+    volumes:
+      - netdata_config:/etc/netdata
+      - ./netdata/netdata.conf:/etc/netdata/netdata.conf:ro
+      - netdata_lib:/var/lib/netdata
+      - netdata_cache:/var/cache/netdata
+      - /:/host/root:ro,rslave
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/log:/host/var/log:ro
 volumes:
   pgdata:
   mediafiles:
   staticfiles:
+  uptime_data:
+  netdata_config:
+  netdata_lib:
+  netdata_cache:

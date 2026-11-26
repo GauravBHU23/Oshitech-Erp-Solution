@@ -1,6 +1,7 @@
 import { api } from "./api";
 import type { Role, Row, User } from "./types";
 import { createElement, type ReactNode } from "react";
+import NoticeNewBadge from "../components/NoticeNewBadge";
 
 const AUDIT_FIELD_LABELS: Record<string, string> = {
   first_name: "First name",
@@ -547,7 +548,7 @@ const list: Resource[] = [
       { param: "category", label: "Type", options: [{ value: "notice", label: "Notice" }, { value: "circular", label: "Circular" }, { value: "holiday", label: "Holiday" }, { value: "event", label: "Event" }, { value: "exam", label: "Exam" }] },
     ],
     columns: [
-      { key: "title", label: "Title", render: (r) => createElement("span", { className: "font-medium" }, (r.is_pinned ? "📌 " : "") + r.title) },
+      { key: "title", label: "Title", render: (r) => createElement("span", { className: "inline-flex flex-wrap items-center gap-2 font-medium" }, createElement(NoticeNewBadge, { publishOn: r.publish_on }), (r.is_pinned ? "📌 " : "") + r.title) },
       { key: "category", label: "Type", render: (r) => statusPill(String(r.category).replace(/^./, (c: string) => c.toUpperCase()), r.category === "holiday" ? "green" : r.category === "exam" ? "amber" : "indigo") },
       { key: "audience", label: "For", render: (r) => ({ all: "Everyone", students: "Students", teachers: "Teachers", staff: "All staff" } as Record<string, string>)[r.audience] + (r.class_level ? " · Class " + r.class_level : "") },
       { key: "event_date", label: "Date", render: (r) => (r.event_date ? r.event_date + (r.end_date && r.end_date !== r.event_date ? " → " + r.end_date : "") : "—") },
@@ -809,7 +810,7 @@ const list: Resource[] = [
     writeRoles: ["stre_admin"],
     canDelete: true,
     columns: [
-      { key: "title", label: "Notice", render: (r) => createElement("span", null, createElement("b", { className: "block font-medium" }, (r.is_pinned ? "📌 " : "") + r.title), r.body ? createElement("span", { className: "block max-w-md truncate text-xs text-slate-500", title: r.body }, r.body) : null) },
+      { key: "title", label: "Notice", render: (r) => createElement("span", null, createElement("span", { className: "flex flex-wrap items-center gap-2" }, createElement(NoticeNewBadge, { publishOn: r.publish_on }), createElement("b", { className: "font-medium" }, (r.is_pinned ? "📌 " : "") + r.title)), r.body ? createElement("span", { className: "block max-w-md truncate text-xs text-slate-500", title: r.body }, r.body) : null) },
       { key: "publish_on", label: "Publish on" },
       { key: "expires_on", label: "Hide after", render: (r) => r.expires_on || "—" },
       { key: "is_active", label: "Shown", render: (r) => (r.is_active ? statusPill("Visible", "green") : statusPill("Hidden", "slate")) },

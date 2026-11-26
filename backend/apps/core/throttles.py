@@ -31,8 +31,15 @@ class AtomicUserRateThrottle(AtomicThrottleMixin, UserRateThrottle):
 
 
 class AtomicScopedRateThrottle(AtomicThrottleMixin, ScopedRateThrottle):
+    """DRF's own ScopedRateThrottle.allow_request() ALWAYS allows the request unless the
+    *view* declares a `throttle_scope` attribute — it never looks at a `scope` set on the
+    throttle subclass itself. Every throttle in this codebase is written the other way
+    (e.g. `class StreThrottle(AtomicScopedRateThrottle): scope = "stre"`), which silently
+    disabled rate limiting on every endpoint using this base class. Falling back to the
+    throttle's own `scope` class attribute here makes that existing pattern actually work,
+    without having to add `throttle_scope = "..."` to every single view."""
     def allow_request(self, request, view):
-        self.scope = getattr(view, self.scope_attr, None)
+        self.scope = getattr(view, self.scope_attr, None) or getattr(type(self), "scope", None)
         if not self.scope:
             return True
         self.rate = self.get_rate()

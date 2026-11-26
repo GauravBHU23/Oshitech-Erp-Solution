@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import { NGROK_SKIP_BROWSER_WARNING_HEADERS } from "@/lib/api";
@@ -14,16 +15,17 @@ type Verification = {
   status?: "active" | "inactive" | "revoked";
 } | null;
 
-export default function VerifyIdPage({ params }: { params: { code: string } }) {
+export default function VerifyIdPage() {
+  const { code } = useParams<{ code: string }>();
   const [result, setResult] = useState<Verification>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch(`/api/v1/id-cards/verify/${encodeURIComponent(params.code)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
+    fetch(`/api/v1/id-cards/verify/${encodeURIComponent(code)}/`, { headers: NGROK_SKIP_BROWSER_WARNING_HEADERS })
       .then((response) => response.json())
       .then(setResult)
       .catch(() => setResult({ valid: false }))
       .finally(() => setLoading(false));
-  }, [params.code]);
+  }, [code]);
 
   const found = !!result?.holder_name;
   const reason = result?.status === "revoked" ? "This card has been revoked by the school." : "This card has expired or the holder is no longer active.";

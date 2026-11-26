@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { rupees } from "@/lib/resources";
@@ -24,21 +25,22 @@ function inWords(value: number) {
   return parts.join(" ");
 }
 
-export default function ReceiptPage({ params }: { params: { id: string } }) {
+export default function ReceiptPage() {
+  const { id } = useParams<{ id: string }>();
   const [payment, setPayment] = useState<Row | null>(null);
   const [invoice, setInvoice] = useState<Row | null>(null);
   const [school, setSchool] = useState<Row | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Row>(`/fee-payments/${params.id}/`)
+    api<Row>(`/fee-payments/${id}/`)
       .then((p) => {
         setPayment(p);
         return api<Row>(`/fee-invoices/${p.invoice}/`).then(setInvoice);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Receipt not found."));
     api<Paginated<Row>>("/schools/?page_size=1").then((d) => setSchool(d.results[0] ?? null)).catch(() => {});
-  }, [params.id]);
+  }, [id]);
 
   if (error) return <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>;
   if (!payment) return <p className="text-sm text-slate-500">Loading receipt…</p>;

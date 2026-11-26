@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { shortDate, usePublicNotices } from "@/lib/publicNotices";
 import Icon from "@/components/Icon";
+import NoticeNewBadge from "@/components/NoticeNewBadge";
 
 const capitalizeWords = (text: string) =>
   text.replace(/(^|[^\p{L}\p{M}]+)(\p{L})/gu, (_match, separator: string, letter: string) => `${separator}${letter.toLocaleUpperCase("en-IN")}`);
@@ -13,10 +14,10 @@ export default function PublicTicker() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<HTMLDivElement>(null);
   const [animation, setAnimation] = useState({ shift: "-100vw", duration: "20s" });
-  const items: { key: string; text: string; href: string }[] = [];
+  const items: { key: string; text: string; href: string; publishOn?: string }[] = [];
   if (data?.stre) items.push({ key: "stre", text: `STRE registration open — exam ${shortDate(data.stre.exam_date)}, last date ${shortDate(data.stre.last_date)}. Register now →`, href: "/stre" });
-  (data?.stre_notices ?? []).forEach((n) => items.push({ key: `stre-${n.id}`, text: `STRE: ${n.is_pinned ? "📌 " : ""}${n.title} →`, href: "/stre" }));
-  (data?.notices ?? []).forEach((n) => items.push({ key: n.id, text: `${n.is_pinned ? "📌 " : ""}${n.title}${n.event_date ? ` (${shortDate(n.event_date)})` : ""} — ${n.school}`, href: "/#notices" }));
+  (data?.stre_notices ?? []).forEach((n) => items.push({ key: `stre-${n.id}`, text: `STRE: ${n.is_pinned ? "📌 " : ""}${n.title} →`, href: "/stre", publishOn: n.publish_on }));
+  (data?.notices ?? []).forEach((n) => items.push({ key: n.id, text: `${n.is_pinned ? "📌 " : ""}${n.title}${n.event_date ? ` (${shortDate(n.event_date)})` : ""} — ${n.school}`, href: "/#notices", publishOn: n.publish_on }));
   // Don't show temporary copy while the API is loading; it gets replaced by
   // the real announcement and looks like the ticker text disappeared.
   if (data && !items.length) items.push({ key: "fallback", text: "Latest announcements from Oshitech ERP →", href: "/#notices" });
@@ -72,7 +73,7 @@ export default function PublicTicker() {
           <div className="public-ticker__group" ref={groupRef}>
             {uniqueItems.map((item) => (
               <Link key={item.key} href={item.href} className="public-ticker__item">
-                <span className="public-ticker__dot" />{capitalizeWords(item.text)}
+                <span className="public-ticker__dot" /><NoticeNewBadge publishOn={item.publishOn} />{capitalizeWords(item.text)}
               </Link>
             ))}
           </div>

@@ -132,6 +132,8 @@ class BootstrapSchoolSetupTests(APITestCase):
 
 class PublicSiteOverviewTests(APITestCase):
     def test_public_overview_counts_active_school_people(self):
+        from apps.stre.models import StreExam, StreRegistration
+
         school = School.objects.create(name="Public School", code="PUBLIC")
         student_user = User.objects.create_user(
             email="student@public.com", password=PW, role=Role.STUDENT, school=school
@@ -153,10 +155,40 @@ class PublicSiteOverviewTests(APITestCase):
             school=inactive_school, user=inactive_teacher, employee_id="T2"
         )
 
+        exam = StreExam.objects.create(
+            code="STRE26",
+            exam_date=datetime.date.today(),
+            last_date=datetime.date.today(),
+        )
+        for index, status in enumerate((
+            StreRegistration.Status.PAID,
+            StreRegistration.Status.ADMIT_CARD_ISSUED,
+            StreRegistration.Status.PAYMENT_PENDING,
+            StreRegistration.Status.CANCELLED,
+        )):
+            StreRegistration.objects.create(
+                exam=exam,
+                first_name="Candidate",
+                last_name=str(index),
+                email=f"candidate{index}@public.com",
+                mobile=f"987654321{index}",
+                father_name="Parent",
+                subject="Mathematics",
+                aim_of_life="Learn and grow",
+                photo="",
+                signature="",
+                status=status,
+            )
+
         response = self.client.get("/api/v1/public-overview/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {"schools": 1, "students": 1, "teachers": 1})
+        self.assertEqual(response.data, {
+            "schools": 1,
+            "students": 1,
+            "teachers": 1,
+            "stre_registrations": 3,
+        })
 
 
 class TeacherRatingApiTests(APITestCase):

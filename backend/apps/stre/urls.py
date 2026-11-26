@@ -28,6 +28,7 @@ urlpatterns = [
     path("pay/cashfree-webhook/", views.CashfreeWebhookView.as_view()),
     path("admit-card/<str:token>/download/", views.AdmitCardDownloadView.as_view()),
     path("admit-card/<str:token>/", views.AdmitCardView.as_view()),
+    path("registration/<str:token>/download/", views.RegistrationDownloadView.as_view()),
     path("files/<str:token>/<str:kind>/", views.CandidateFileView.as_view()),
     path("verify/<str:roll_no>/", views.VerifyRollView.as_view()),
     path("result/", results.PublicResultView.as_view()),

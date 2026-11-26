@@ -1,19 +1,21 @@
 "use client";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import { NGROK_SKIP_BROWSER_WARNING_HEADERS } from "@/lib/api";
 
 type Verification = { valid: boolean; student_name?: string; exam?: string; school?: string } | null;
 
-export default function VerifyPage({ params }: { params: { code: string } }) {
+export default function VerifyPage() {
+  const { code } = useParams<{ code: string }>();
   const [result, setResult] = useState<Verification>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch(`/api/v1/exams/verify/${encodeURIComponent(params.code)}/`, {
+    fetch(`/api/v1/exams/verify/${encodeURIComponent(code)}/`, {
       headers: NGROK_SKIP_BROWSER_WARNING_HEADERS,
     }).then((response) => response.json()).then(setResult).catch(() => setResult({ valid: false })).finally(() => setLoading(false));
-  }, [params.code]);
+  }, [code]);
 
   return <main className="verify-page relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f6f7fb] px-5 py-12"><div className="absolute -left-36 -top-40 h-[420px] w-[420px] rounded-full bg-indigo-200/40 blur-3xl" /><div className="absolute -bottom-40 -right-32 h-[420px] w-[420px] rounded-full bg-sky-100/80 blur-3xl" />
     

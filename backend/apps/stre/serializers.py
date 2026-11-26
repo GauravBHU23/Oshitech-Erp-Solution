@@ -75,6 +75,31 @@ def _image(value, label, max_mb):
     return validate_profile_photo_file(value)
 
 
+def _capitalize_initials(value):
+    result = []
+    capitalize_next = True
+    for char in value:
+        if capitalize_next and char.isalpha():
+            result.append(char.upper())
+            capitalize_next = False
+        else:
+            result.append(char)
+        if char.isspace() or char in "-'\u2019":
+            capitalize_next = True
+    return "".join(result)
+
+
+def _capitalize_registration_text(attrs):
+    for field in (
+        "first_name", "last_name", "father_name", "school_name", "address",
+        "subject", "subject_interest", "aim_of_life",
+    ):
+        if field in attrs:
+            attrs[field] = _capitalize_initials(attrs[field])
+    if "interests" in attrs:
+        attrs["interests"] = [_capitalize_initials(item) for item in attrs["interests"]]
+
+
 class StreRegistrationCreateSerializer(serializers.Serializer):
     first_name = serializers.CharField(max_length=100)
     last_name = serializers.CharField(max_length=100)
@@ -154,6 +179,7 @@ class StreRegistrationCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         from .security import check_email_token
 
+        _capitalize_registration_text(attrs)
         exam = self.context["exam"]
         # Email OTP se verify hua ho tabhi registration
         check_email_token(attrs["email"], attrs.pop("email_token", ""))
@@ -268,6 +294,7 @@ class StreAdminRegistrationUpdateSerializer(serializers.Serializer):
     validate_signature = StreRegistrationCreateSerializer.validate_signature
 
     def validate(self, attrs):
+        _capitalize_registration_text(attrs)
         reg = self.instance
         others = StreRegistration.objects.filter(exam=reg.exam).exclude(pk=reg.pk)
         if "email" in attrs and others.filter(email=attrs["email"]).exists():

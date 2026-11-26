@@ -159,6 +159,8 @@ class FeeInvoice(TenantModel):
 
     @property
     def paid(self):
+        if "_paid_total" in self.__dict__:
+            return self._paid_total or Decimal("0")
         return self.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
     @property

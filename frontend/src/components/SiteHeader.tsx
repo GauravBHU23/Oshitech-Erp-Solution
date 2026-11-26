@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useAuth } from "@/lib/auth";
 import Icon from "@/components/Icon";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -9,30 +9,42 @@ import ThemeToggle from "@/components/ThemeToggle";
 /** <details> ko bahar click / Escape par band kare; dusra khule to ise band kare. */
 function useDismissibleDetails() {
   const refs = useRef<(HTMLDetailsElement | null)[]>([]);
-  const set = (index: number) => (el: HTMLDetailsElement | null) => { refs.current[index] = el; };
+  // Stable callback-ref identities (useRef, not re-created each render) so React
+  // doesn't detach/reattach on every re-render and lose a toggle listener.
+  const setters = useRef<((el: HTMLDetailsElement | null) => void)[]>([]);
+
+  const closeOthers = (opened: HTMLDetailsElement) => {
+    for (const el of refs.current) if (el && el !== opened && el.open) el.removeAttribute("open");
+  };
+  const onToggle = (event: Event) => {
+    const el = event.currentTarget as HTMLDetailsElement;
+    if (el.open) closeOthers(el);
+  };
+
+  const set = (index: number) => {
+    setters.current[index] ??= (el) => {
+      refs.current[index]?.removeEventListener("toggle", onToggle);
+      refs.current[index] = el;
+      el?.addEventListener("toggle", onToggle);
+    };
+    return setters.current[index];
+  };
 
   useEffect(() => {
-    const closeOthers = (opened: HTMLDetailsElement) => {
-      for (const el of refs.current) if (el && el !== opened && el.open) el.removeAttribute("open");
-    };
-    const onToggle = (event: Event) => {
-      const el = event.target as HTMLDetailsElement;
-      if (el.open) closeOthers(el);
-    };
     const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (refs.current.some((el) => el?.contains(target))) return;
       for (const el of refs.current) {
-        if (el?.open && !el.contains(event.target as Node)) el.removeAttribute("open");
+        if (el?.open) el.removeAttribute("open");
       }
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       for (const el of refs.current) if (el?.open) el.removeAttribute("open");
     };
-    for (const el of refs.current) el?.addEventListener("toggle", onToggle);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      for (const el of refs.current) el?.removeEventListener("toggle", onToggle);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -42,7 +54,7 @@ function useDismissibleDetails() {
 }
 
 const sections = [
-  ["#overview", "Overview"],
+  ["#overview", "Home"],
   ["#about", "About Us"],
   ["#platform", "Modules"],
   ["#portals", "Portals"],
@@ -53,7 +65,7 @@ const sections = [
 ] as const;
 
 // Desktop navbar par kam links (laptop par ek line me fit ho)
-const desktopSections = new Set(["#about", "#notices", "#platform", "#portals", "#teachers"]);
+const desktopSections = new Set(["#overview", "#about", "#notices", "#platform", "#portals", "#teachers"]);
 
 const registrations = [
   { title: "Student Registration", text: "Apply to your school with the school code", href: "/register/student", icon: "student", tone: "bg-emerald-50 text-emerald-700" },
@@ -78,6 +90,20 @@ export default function SiteHeader() {
   const [open, setOpen] = useState(false);
   const href = (hash: string) => (onHome ? hash : `/${hash}`);
   const setDetailsRef = useDismissibleDetails();
+  const lastPointerType = useRef("");
+  const supportsHover = () => window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  const onDropdownPointerEnter = (event: ReactPointerEvent<HTMLDetailsElement>) => {
+    if (event.pointerType !== "touch" && supportsHover()) event.currentTarget.open = true;
+  };
+  const onDropdownPointerLeave = (event: ReactPointerEvent<HTMLDetailsElement>) => {
+    if (event.pointerType !== "touch" && supportsHover()) event.currentTarget.open = false;
+  };
+  const onDropdownPointerDown = (event: ReactPointerEvent<HTMLDetailsElement>) => {
+    lastPointerType.current = event.pointerType;
+  };
+  const onDropdownClick = (event: ReactMouseEvent<HTMLElement>) => {
+    if (event.detail > 0 && lastPointerType.current !== "touch" && supportsHover()) event.preventDefault();
+  };
 
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
@@ -95,25 +121,25 @@ export default function SiteHeader() {
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#20274a] text-lg font-bold text-white shadow-md shadow-indigo-200">O</span>
           <span><span className="block text-[15px] font-bold tracking-tight text-slate-900">Oshitech</span><span className="-mt-0.5 block text-[9px] font-medium uppercase tracking-[.18em] text-slate-400">Education ERP</span></span>
         </Link>
-        <nav aria-label="Main navigation" className="hidden items-center justify-center gap-1 lg:flex">
-          {sections.filter(([hash]) => desktopSections.has(hash)).map(([hash, label]) => <a key={hash} className="rounded-lg px-3 py-2 text-[13px] font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700" href={href(hash)}>{label}</a>)}
-          <details ref={setDetailsRef(0)} className="group relative">
-            <summary className="flex cursor-pointer list-none items-center gap-1 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700 [&::-webkit-details-marker]:hidden">Register<Icon name="arrow" className="rotate-90 transition-transform group-open:-rotate-90" size={12} /></summary>
-            <div className="site-header__menu absolute left-0 top-full z-50 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15">
+        <nav aria-label="Main navigation" className="hidden items-center justify-center lg:flex">
+          {sections.filter(([hash]) => desktopSections.has(hash)).map(([hash, label]) => <a key={hash} className="shrink-0 rounded-lg px-3.5 py-2 text-center text-[13px] font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700" href={href(hash)}>{label}</a>)}
+          <details ref={setDetailsRef(0)} className="group relative shrink-0" onPointerEnter={onDropdownPointerEnter} onPointerLeave={onDropdownPointerLeave} onPointerDown={onDropdownPointerDown}>
+            <summary onClick={onDropdownClick} className="flex cursor-pointer list-none items-center justify-center gap-1 rounded-lg px-3.5 py-2 text-[13px] font-medium text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700 [&::-webkit-details-marker]:hidden">Register<Icon name="chevronDown" className="transition-transform group-open:rotate-180" size={14} /></summary>
+            <div className="site-header__menu absolute left-0 top-full z-50 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15">
               {registrations.map((item) => <Link key={item.href} href={item.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-slate-50"><span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${item.tone}`}><Icon name={item.icon} size={16} /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-slate-800">{item.title}</span>{item.text && <span className="block text-[11px] text-slate-500">{item.text}</span>}</span></Link>)}
             </div>
           </details>
-          <Link href="/contact" className={`rounded-lg px-3 py-2 text-[13px] font-medium transition hover:bg-indigo-50 hover:text-indigo-700 ${pathname === "/contact" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}>Contact us</Link>
+          <Link href="/contact" className={`shrink-0 rounded-lg px-3.5 py-2 text-center text-[13px] font-medium transition hover:bg-indigo-50 hover:text-indigo-700 ${pathname === "/contact" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}>Contact us</Link>
         </nav>
         <div className="flex shrink-0 items-center justify-self-end gap-2">
           <ThemeToggle />
           {user ? (
             <Link className="hidden min-h-10 items-center gap-2 rounded-xl bg-[#20274a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:inline-flex" href="/dashboard">Open dashboard<Icon name="external" size={15} /></Link>
           ) : (
-            <details ref={setDetailsRef(1)} className="group relative hidden shrink-0 sm:block">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-[#20274a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 [&::-webkit-details-marker]:hidden"><Icon name="key" size={15} />Portal login<span className="ml-0.5 grid h-5 w-5 place-items-center rounded-full bg-white/15"><Icon name="arrow" className="rotate-90 transition-transform group-open:-rotate-90" size={12} /></span></summary>
-              <div className="site-header__menu absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15">
-                {loginPortals.map((portal) => <Link key={portal.href} href={portal.href} className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-indigo-700"><span className={`grid h-8 w-8 place-items-center rounded-lg ${portal.tone}`}><Icon name={portal.icon} size={16} /></span><span className="flex-1">{portal.title}</span><Icon name="arrow" className="text-slate-400" size={14} /></Link>)}
+            <details ref={setDetailsRef(1)} className="group relative hidden shrink-0 sm:block" onPointerEnter={onDropdownPointerEnter} onPointerLeave={onDropdownPointerLeave} onPointerDown={onDropdownPointerDown}>
+              <summary onClick={onDropdownClick} className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-[#20274a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 [&::-webkit-details-marker]:hidden"><Icon name="key" size={15} />Portal login<span className="ml-0.5 grid h-5 w-5 place-items-center rounded-full bg-white/15"><Icon name="chevronDown" className="transition-transform group-open:rotate-180" size={13} /></span></summary>
+              <div className="site-header__menu absolute right-0 top-full z-50 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15">
+                {loginPortals.map((portal) => <Link key={portal.href} href={portal.href} className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-indigo-700"><span className={`grid h-8 w-8 place-items-center rounded-lg ${portal.tone}`}><Icon name={portal.icon} size={16} /></span><span className="flex-1">{portal.title}</span></Link>)}
               </div>
             </details>
           )}
@@ -138,21 +164,28 @@ export default function SiteHeader() {
             ))}
             <Link href="/contact" onClick={() => setOpen(false)} className="flex min-h-11 items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700"><Icon name="ticket" size={16} />Contact us</Link>
           </nav>
-          <p className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Registration</p>
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {registrations.map((item) => (
-              <Link key={item.href} href={item.href} className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${item.tone}`}><Icon name={item.icon} size={16} /></span><span className="flex-1"><span className="block">{item.title}</span>{item.text && <span className="block text-[11px] font-normal text-slate-500">{item.text}</span>}</span><Icon name="arrow" className="text-slate-400" size={14} /></Link>
-            ))}
-          </div>
-          <p className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">{user ? "Your workspace" : "Portal login"}</p>
-          {user ? (
-            <Link href="/dashboard" className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20274a] px-4 text-sm font-semibold text-white">Open dashboard<Icon name="external" size={15} /></Link>
-          ) : (
-            <div className="grid gap-1.5">
-              {loginPortals.map((portal) => (
-                <Link key={portal.href} href={portal.href} className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><span className={`grid h-8 w-8 place-items-center rounded-lg ${portal.tone}`}><Icon name={portal.icon} size={16} /></span><span className="flex-1">{portal.title}</span><Icon name="arrow" className="text-slate-400" size={14} /></Link>
+          <details ref={setDetailsRef(2)} className="group mt-5">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400 [&::-webkit-details-marker]:hidden">Registration<Icon name="chevronDown" className="transition-transform group-open:rotate-180" size={14} /></summary>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {registrations.map((item) => (
+                <Link key={item.href} href={item.href} className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${item.tone}`}><Icon name={item.icon} size={16} /></span><span className="flex-1"><span className="block">{item.title}</span>{item.text && <span className="block text-[11px] font-normal text-slate-500">{item.text}</span>}</span></Link>
               ))}
             </div>
+          </details>
+          {user ? (
+            <>
+              <p className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Your workspace</p>
+              <Link href="/dashboard" className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#20274a] px-4 text-sm font-semibold text-white">Open dashboard<Icon name="external" size={15} /></Link>
+            </>
+          ) : (
+            <details ref={setDetailsRef(3)} className="group mt-5">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400 [&::-webkit-details-marker]:hidden">Portal login<Icon name="chevronDown" className="transition-transform group-open:rotate-180" size={14} /></summary>
+              <div className="grid gap-1.5">
+                {loginPortals.map((portal) => (
+                  <Link key={portal.href} href={portal.href} className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"><span className={`grid h-8 w-8 place-items-center rounded-lg ${portal.tone}`}><Icon name={portal.icon} size={16} /></span><span className="flex-1">{portal.title}</span></Link>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}

@@ -23,15 +23,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#4f46e5" },
-    { media: "(prefers-color-scheme: dark)", color: "#0b1220" },
-  ],
+  themeColor: "#4f46e5",
 };
 
-// Theme ko first paint se pehle set karta hai, taaki dark mode me white flash na aaye
-// aur jin pages par toggle button nahi hai wahan bhi sahi theme lage.
-const THEME_SCRIPT = `(function(){try{var k="oshitech-theme",s=localStorage.getItem(k),m=window.matchMedia("(prefers-color-scheme: dark)");var apply=function(){var v=localStorage.getItem(k);var d=v?v==="dark":m.matches;document.documentElement.dataset.theme=d?"dark":"light";};apply();m.addEventListener&&m.addEventListener("change",function(){if(!localStorage.getItem(k)){apply();window.dispatchEvent(new Event("oshitech:theme-change"));}});}catch(e){document.documentElement.dataset.theme="light";}})();`;
+// Light mode is the default before first paint; the user can switch it with the theme toggle.
+const THEME_SCRIPT = `document.documentElement.dataset.theme="light";`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

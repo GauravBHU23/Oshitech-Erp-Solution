@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { Paginated, Row } from "@/lib/types";
 import Icon from "@/components/Icon";
 import PdfLink from "@/components/PdfLink";
+import NoticeNewBadge from "@/components/NoticeNewBadge";
 
 const TONE: Record<string, string> = { holiday: "status-pill--green", exam: "status-pill--amber", event: "status-pill--indigo", circular: "status-pill--slate", notice: "status-pill--indigo" };
 
@@ -26,7 +27,7 @@ export default function NoticeWidget() {
           <li key={n.id} className="flex gap-3 py-3 first:pt-0 last:pb-0">
             <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-700"><Icon name={n.category === "holiday" ? "calendar" : "megaphone"} size={16} /></span>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><b className="text-sm font-semibold text-slate-800">{n.is_pinned ? "📌 " : ""}{n.title}</b><span className={`status-pill ${TONE[n.category] ?? "status-pill--slate"}`}>{String(n.category).replace(/^./, (c: string) => c.toUpperCase())}</span></div>
+              <div className="flex flex-wrap items-center gap-2"><NoticeNewBadge publishOn={n.publish_on} /><b className="text-sm font-semibold text-slate-800">{n.is_pinned ? "📌 " : ""}{n.title}</b><span className={`status-pill ${TONE[n.category] ?? "status-pill--slate"}`}>{String(n.category).replace(/^./, (c: string) => c.toUpperCase())}</span></div>
               {n.body && <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{n.body}</p>}
               <PdfLink href={n.attachment_url} />
               <p className="mt-1 text-[11px] text-slate-400">{n.event_date ? `On ${n.event_date}${n.end_date && n.end_date !== n.event_date ? ` – ${n.end_date}` : ""} · ` : ""}Posted {n.publish_on}</p>

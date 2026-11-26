@@ -19,6 +19,7 @@ const paths: Record<string, ReactNode> = {
   settings: <><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-6h4m4 8h4" /></>,
   layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></>,
   arrow: <><path d="M5 12h14m-6-6 6 6-6 6" /></>,
+  chevronDown: <path d="m6 9 6 6 6-6" />,
   external: <><path d="M14 3h7v7m-1-6-9 9" /><path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,

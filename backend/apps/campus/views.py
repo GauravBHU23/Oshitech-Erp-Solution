@@ -1,6 +1,9 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -230,7 +233,21 @@ class FeeStructureViewSet(TenantModelViewSet):
 
 
 class FeeInvoiceViewSet(TenantModelViewSet):
-    queryset = FeeInvoice.objects.select_related("student__user").prefetch_related("payments")
+    _money = DecimalField(max_digits=10, decimal_places=2)
+    _payment_total = (
+        FeePayment.objects.filter(invoice_id=OuterRef("pk"))
+        .order_by()
+        .values("invoice_id")
+        .annotate(total=Sum("amount"))
+        .values("total")
+    )
+    queryset = FeeInvoice.objects.select_related("student__user").annotate(
+        _paid_total=Coalesce(
+            Subquery(_payment_total, output_field=_money),
+            Value(Decimal("0.00"), output_field=_money),
+            output_field=_money,
+        )
+    )
     serializer_class = FeeInvoiceSerializer
     read_roles = ADMIN_STUDENT
     write_roles = ADMIN_ONLY
@@ -243,9 +260,15 @@ class FeeInvoiceViewSet(TenantModelViewSet):
         if self.request.user.role == Role.STUDENT:
             return qs.filter(student__user=self.request.user)
         status = self.request.query_params.get("status")
+        total = ExpressionWrapper(F("amount") - F("discount") + F("fine"), output_field=self._money)
         if status in ("paid", "partial", "unpaid", "overdue"):
-            ids = [inv.pk for inv in qs if inv.status == status]
-            return qs.filter(pk__in=ids)
+            if status == "paid":
+                return qs.filter(_paid_total__gte=total)
+            if status == "partial":
+                return qs.filter(_paid_total__gt=0, _paid_total__lt=total)
+            if status == "overdue":
+                return qs.filter(_paid_total=0, _paid_total__lt=total, due_date__lt=timezone.localdate())
+            return qs.filter(_paid_total=0, _paid_total__lt=total, due_date__gte=timezone.localdate())
         return qs
 
     def perform_destroy(self, instance):
@@ -255,15 +278,22 @@ class FeeInvoiceViewSet(TenantModelViewSet):
 
     @action(detail=False, methods=["get"])
     def summary(self, request):
-        invoices = list(self.get_queryset())
-        total = sum((inv.total for inv in invoices), 0)
-        paid = sum((inv.paid for inv in invoices), 0)
+        total = ExpressionWrapper(F("amount") - F("discount") + F("fine"), output_field=self._money)
+        summary = self.get_queryset().aggregate(
+            invoices=Count("pk"),
+            total=Coalesce(Sum(total), Value(Decimal("0.00"), output_field=self._money), output_field=self._money),
+            collected=Coalesce(Sum("_paid_total"), Value(Decimal("0.00"), output_field=self._money), output_field=self._money),
+            overdue=Count(
+                "pk",
+                filter=Q(_paid_total=0, _paid_total__lt=total, due_date__lt=timezone.localdate()),
+            ),
+        )
         return Response({
-            "invoices": len(invoices),
-            "total": total,
-            "collected": paid,
-            "due": total - paid,
-            "overdue": sum(1 for inv in invoices if inv.status == "overdue"),
+            "invoices": summary["invoices"],
+            "total": summary["total"],
+            "collected": summary["collected"],
+            "due": summary["total"] - summary["collected"],
+            "overdue": summary["overdue"],
         })
 
 

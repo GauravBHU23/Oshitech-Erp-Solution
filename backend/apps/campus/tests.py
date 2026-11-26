@@ -1,11 +1,14 @@
 import datetime
+from decimal import Decimal
 
 from django.core.cache import cache
+from django.db import connection
 from django.utils import timezone
 from rest_framework.test import APITestCase
+from django.test.utils import CaptureQueriesContext
 
 from apps.academics.models import TeachingAssignment
-from apps.campus.models import FeeInvoice, LeaveRequest, Notice
+from apps.campus.models import FeeInvoice, FeePayment, LeaveRequest, Notice
 from apps.core.models import SupportRequest
 from apps.core.roles import Role
 from apps.core.tests import PW, User, make_school
@@ -138,6 +141,38 @@ class FeeTests(CampusBase):
         self.assertEqual(self.client.delete(f"/api/v1/fee-invoices/{invoice.id}/").status_code, 400)
         summary = self.client.get("/api/v1/fee-invoices/summary/").data
         self.assertEqual(float(summary["collected"]), 2000.0)
+
+    def test_invoice_list_aggregates_payments_without_per_invoice_queries(self):
+        self.client.force_authenticate(self.a["admin"])
+        invoices = {
+            "paid": FeeInvoice.objects.create(school=self.a["school"], student=self.student, title="Paid", amount=100, due_date=self.today),
+            "partial": FeeInvoice.objects.create(school=self.a["school"], student=self.student, title="Partial", amount=100, due_date=self.today),
+            "overdue": FeeInvoice.objects.create(school=self.a["school"], student=self.student, title="Overdue", amount=100, due_date=self.today - datetime.timedelta(days=1)),
+            "unpaid": FeeInvoice.objects.create(school=self.a["school"], student=self.student, title="Unpaid", amount=100, due_date=self.today),
+        }
+        FeePayment.objects.create(school=self.a["school"], invoice=invoices["paid"], amount=Decimal("100"))
+        FeePayment.objects.create(school=self.a["school"], invoice=invoices["partial"], amount=Decimal("25"))
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/api/v1/fee-invoices/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        payment_sum_queries = [
+            query["sql"] for query in queries.captured_queries
+            if "sum(" in query["sql"].lower() and "campus_feepayment" in query["sql"].lower()
+        ]
+        self.assertEqual(len(payment_sum_queries), 1)
+        statuses = {row["title"]: row["status"] for row in response.data["results"]}
+        self.assertEqual(statuses, {"Paid": "paid", "Partial": "partial", "Overdue": "overdue", "Unpaid": "unpaid"})
+        for status, title in (("paid", "Paid"), ("partial", "Partial"), ("overdue", "Overdue"), ("unpaid", "Unpaid")):
+            filtered = self.client.get(f"/api/v1/fee-invoices/?status={status}")
+            self.assertEqual([row["title"] for row in filtered.data["results"]], [title])
+        summary = self.client.get("/api/v1/fee-invoices/summary/").data
+        self.assertEqual(summary["invoices"], 4)
+        self.assertEqual(float(summary["total"]), 400)
+        self.assertEqual(float(summary["collected"]), 125)
+        self.assertEqual(float(summary["due"]), 275)
+        self.assertEqual(summary["overdue"], 1)
 
     def test_fee_privacy(self):
         FeeInvoice.objects.create(school=self.a["school"], student=self.student, title="Bus", amount=100, due_date=self.today)

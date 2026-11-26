@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { formatDate } from "@/lib/stre";
 import Icon from "@/components/Icon";
 import PdfLink from "@/components/PdfLink";
+import NoticeNewBadge from "@/components/NoticeNewBadge";
 
 type Notice = { id: string; title: string; body: string; is_pinned: boolean; publish_on: string; attachment_url?: string | null };
 
@@ -22,7 +23,7 @@ export default function StreNotices() {
       <ul className="divide-y divide-slate-100">
         {notices.map((n) => (
           <li key={n.id} className="px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">{n.is_pinned ? "📌 " : ""}{n.title}</p>
+            <div className="flex flex-wrap items-center gap-2"><NoticeNewBadge publishOn={n.publish_on} /><p className="text-sm font-semibold text-slate-900">{n.is_pinned ? "📌 " : ""}{n.title}</p></div>
             {n.body && <p className="mt-0.5 whitespace-pre-line text-sm leading-6 text-slate-600">{n.body}</p>}
             <PdfLink href={n.attachment_url} />
             <p className="mt-0.5 text-[11px] text-slate-400">{formatDate(n.publish_on)}</p>

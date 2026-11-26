@@ -4,6 +4,7 @@ import Link from "next/link";
 import { toast } from "@/lib/toast";
 import { FormEvent, useEffect, useState } from "react";
 import Icon from "@/components/Icon";
+import ThemeToggle from "@/components/ThemeToggle";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -53,7 +54,7 @@ export default function SupportPage() {
         <div className="bg-[#172238] px-6 py-7 text-white sm:px-9">
           <div className="flex items-center justify-between">
             <Link href="/" className="inline-flex items-center gap-2 text-xs font-medium text-slate-300 transition hover:text-white"><Icon name="arrow" className="rotate-180" size={14} />Home</Link>
-            
+            <ThemeToggle />
           </div>
           <p className="mt-6 text-[10px] font-bold uppercase tracking-[.18em] text-cyan-200">Oshitech support</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Report a problem or ask a question</h1>

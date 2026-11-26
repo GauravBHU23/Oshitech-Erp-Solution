@@ -21,6 +21,10 @@ type Info = {
 };
 
 const OTHER = "__other__";
+const CAPITALIZED_FIELDS = new Set([
+  "first_name", "last_name", "father_name", "school_name", "address",
+  "subject", "subject_interest", "aim_of_life",
+]);
 const LABELS: Record<string, string> = {
   first_name: "First name", last_name: "Last name", email: "Email", mobile: "Mobile number", father_name: "Father's name", school_name: "School / college name", class_level: "Class / qualification", address: "Address",
   subject: "Subject", subject_interest: "Subject interest", interests: "Hobbies & interests", aim_of_life: "Aim of life",
@@ -29,6 +33,18 @@ const LABELS: Record<string, string> = {
 
 function Req() { return <span className="text-red-500" aria-hidden="true"> *</span>; }
 function Err({ msg }: { msg?: string }) { return msg ? <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{msg}</span> : null; }
+
+function capitalizeInitials(value: string) {
+  let capitalizeNext = true;
+  let result = "";
+  for (const char of value) {
+    const isLetter = char.toLowerCase() !== char.toUpperCase();
+    result += capitalizeNext && isLetter ? char.toUpperCase() : char;
+    if (capitalizeNext && isLetter) capitalizeNext = false;
+    if (/\s|[-'’]/u.test(char)) capitalizeNext = true;
+  }
+  return result;
+}
 
 function escapeHtml(value: unknown) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char] ?? char);
@@ -177,7 +193,11 @@ export default function StreRegisterPage() {
   }, []);
   useEffect(() => () => { Object.values(preview).forEach((url) => url && URL.revokeObjectURL(url)); }, [preview]);
 
-  const set = (k: string, value: string) => { setV((s) => ({ ...s, [k]: value })); setErrors((e) => (e[k] ? { ...e, [k]: "" } : e)); };
+  const set = (k: string, value: string) => {
+    const formatted = CAPITALIZED_FIELDS.has(k) ? capitalizeInitials(value) : value;
+    setV((s) => ({ ...s, [k]: formatted }));
+    setErrors((e) => (e[k] ? { ...e, [k]: "" } : e));
+  };
   const subject = v.subject ?? "";
 
   const pickFile = async (kind: "photo" | "signature", file: File | null) => {
@@ -198,7 +218,7 @@ export default function StreRegisterPage() {
     setInterests((list) => (list.includes(item) ? list.filter((i) => i !== item) : [...list, item]));
   };
   const addSkill = () => {
-    const skill = customSkill.trim().replace(/\s+/g, " ");
+    const skill = capitalizeInitials(customSkill.trim().replace(/\s+/g, " "));
     if (skill.length < 2) return;
     if (!interests.some((i) => i.toLowerCase() === skill.toLowerCase())) setInterests((list) => [...list, skill]);
     setCustomSkill("");
@@ -269,7 +289,7 @@ export default function StreRegisterPage() {
 
   if (done) {
     return (
-      <StreShell>
+      <StreShell notices={false}>
         <section className="stre-registration-page font-sans overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
           {done.status === "payment_pending" || done.status === "payment_submitted" ? (
             <div className="stre-hero bg-gradient-to-r from-amber-600 to-orange-600 px-5 py-6 text-white sm:px-8">
@@ -305,13 +325,13 @@ export default function StreRegisterPage() {
   }
 
   return (
-    <StreShell>
+    <StreShell notices={false}>
       <section className="stre-registration-page font-sans overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
         <header className="bg-gradient-to-r from-[#3b1d6e] to-[#4f46e5] px-5 py-6 font-sans text-white sm:px-8 sm:py-8">
-          <div className="flex items-start justify-between gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.16em]"><Icon name="award" size={13} />Exam registration only</span>
+          <div className="stre-registration-header-controls flex items-stretch gap-2 sm:items-center sm:justify-between">
+            <span className="inline-flex min-w-0 items-center justify-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 text-center text-[9px] font-semibold uppercase leading-tight tracking-[.08em] sm:gap-2 sm:px-3 sm:text-[10px] sm:tracking-[.16em]"><Icon name="award" size={13} className="shrink-0" />Exam registration only</span>
             {info?.exam && (
-              <button type="button" className="no-print inline-flex shrink-0 items-center rounded-lg border border-white/25 bg-white/10 px-3 py-2 font-sans text-sm font-medium tracking-normal text-white transition hover:bg-white/20" onClick={() => void printStreOfflineForm(info.exam, v, interests, undefined, { photo, signature })}><Icon name="download" size={15} className="mr-1.5" />Download offline form</button>
+              <button type="button" className="no-print inline-flex min-w-0 items-center justify-center gap-1 rounded-md border border-white/25 bg-white/10 px-2 py-2 text-center font-sans text-xs font-medium leading-tight tracking-normal text-white transition hover:bg-white/20 sm:gap-0 sm:px-3 sm:text-sm" onClick={() => void printStreOfflineForm(info.exam, v, interests, undefined, { photo, signature })}><Icon name="download" size={15} className="shrink-0 sm:mr-1.5" />Download offline form</button>
             )}
           </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">STRE Student Talent Recognition Exam</h1>
@@ -361,7 +381,7 @@ export default function StreRegisterPage() {
                   {errors.address && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.address}</span>}
                 </label>
                 <label className={`block text-xs font-semibold text-slate-800 ${errors.subject ? "has-error" : ""}`}>Subject<Req />
-                  <input id="stre-subject" className="input mt-1.5" maxLength={100} placeholder="Type your subject, e.g. Mathematics" autoComplete="off" value={v.subject ?? ""} aria-invalid={errors.subject ? true : undefined} onChange={(e) => { set("subject", e.target.value); setErrors((x) => ({ ...x, subject: "" })); }} />
+                  <input id="stre-subject" className="input mt-1.5" maxLength={100} placeholder="Type your subject, e.g. Mathematics" autoComplete="off" value={v.subject ?? ""} aria-invalid={errors.subject ? true : undefined} onChange={(e) => set("subject", e.target.value)} />
                   <Err msg={errors.subject} />
                 </label>
               </div>
@@ -392,7 +412,7 @@ export default function StreRegisterPage() {
                   </select>
                   {showCustomSkill && (
                     <div className="mt-2 flex gap-2">
-                      <input className="input" autoFocus maxLength={60} placeholder="Type your skill / hobby (e.g. Chess)" value={customSkill} onChange={(e) => setCustomSkill(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} />
+                      <input className="input" autoFocus maxLength={60} placeholder="Type your skill / hobby (e.g. Chess)" value={customSkill} onChange={(e) => setCustomSkill(capitalizeInitials(e.target.value))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} />
                       <button type="button" className="btn-ghost shrink-0" onClick={addSkill} disabled={customSkill.trim().length < 2}>+ Add</button>
                     </div>
                   )}

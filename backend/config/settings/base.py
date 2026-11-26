@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_filters",
     "drf_spectacular",
+    "silk",
     # local
     "apps.core",
     "apps.accounts",
@@ -68,6 +69,11 @@ INSTALLED_APPS = [
     "apps.stre",
 ]
 
+# Slow-query / N+1 investigation tool (django-silk). Off by default — turn it on
+# temporarily (ENABLE_SILK=True) only while actively profiling, since recording every
+# request's queries adds real overhead; never leave it on in normal production traffic.
+ENABLE_SILK = env("ENABLE_SILK", "False") == "True"
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -80,6 +86,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+if ENABLE_SILK:
+    MIDDLEWARE.insert(1, "silk.middleware.SilkyMiddleware")
+
+# /silk/ shows every captured request's SQL queries, including duplicate/N+1 counts and
+# timings — admin-only, and only reachable at all when ENABLE_SILK is on.
+SILKY_AUTHENTICATION = True
+SILKY_AUTHORISATION = True
+SILKY_PERMISSIONS = lambda user: user.is_staff  # noqa: E731
+SILKY_MAX_RECORDED_REQUESTS = 2000
+SILKY_INTERCEPT_PERCENT = 100
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
@@ -155,6 +171,11 @@ REST_FRAMEWORK = {
         "support": "10/hour",
         "admin_email": "10/hour",
         "stre": "150/hour",
+        "stre_webhook": "600/hour",
+        # OTP endpoints are a classic bot/abuse target (email bombing, code brute-forcing)
+        # and get their own tight budgets, separate from general STRE browsing traffic.
+        "stre_otp_send": "5/hour",
+        "stre_otp_verify": "10/min",
     },
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -193,6 +214,12 @@ CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "http://localhost:3000")
 CSRF_COOKIE_DOMAIN = env("CSRF_COOKIE_DOMAIN") or None
+# Django's own session/CSRF cookies aren't used for API auth (that's the AUTH_COOKIE_* JWT
+# cookies above) but admin login still relies on them — keep SameSite explicit rather than
+# relying on Django's implicit default.
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False  # frontend JS reads this to send X-CSRFToken (see frontend/src/lib/api.ts)
 
 # ---------- Account lockout ----------
 MAX_FAILED_LOGINS = 5
@@ -206,6 +233,40 @@ ADMIN_URL = env("ADMIN_URL", "admin/")
 # ---------- Celery ----------
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+CELERY_BEAT_SCHEDULE = {
+    "stre-payment-sync-every-two-minutes": {
+        "task": "apps.stre.tasks.sync_stre_payments",
+        "schedule": 120.0,
+    },
+}
+
+SENTRY_DSN = (env("SENTRY_DSN", "") or "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    def _sanitize_sentry_event(event, hint):
+        request = event.get("request")
+        if isinstance(request, dict):
+            for key in ("cookies", "data", "query_string"):
+                request.pop(key, None)
+            url = request.get("url")
+            if isinstance(url, str):
+                request["url"] = url.split("?", 1)[0]
+            headers = request.get("headers")
+            if isinstance(headers, dict):
+                request["headers"] = {
+                    key: value for key, value in headers.items()
+                    if key.lower() not in {"authorization", "cookie", "set-cookie", "x-csrftoken"}
+                }
+        return event
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        send_default_pii=False,
+        before_send=_sanitize_sentry_event,
+    )
 
 
 # ---------- Public site / email ----------
