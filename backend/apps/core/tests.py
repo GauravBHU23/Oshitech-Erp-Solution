@@ -8,7 +8,7 @@ from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.academics.models import AcademicYear, ClassRoom, Course, Subject, TeachingAssignment
-from apps.core.models import AuditLog, SupportRequest
+from apps.core.models import AuditLog, SupportMessage, SupportRequest
 from apps.core.roles import Role
 from apps.exams.models import Exam, ExamSchedule
 from apps.schools.models import School
@@ -323,6 +323,14 @@ class SupportRequestApiTests(APITestCase):
         self.data = make_school("support")
 
     def test_guest_can_report_login_issue_and_admins_can_triage(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.stre.models import StreCaptcha
+        from apps.stre.security import TURNSTILE_TEST_TOKEN, _hash
+
+        captcha = StreCaptcha.objects.create(answer_hash=_hash("ABCDE"), expires_at=timezone.now() + timedelta(minutes=5))
         guest_response = self.client.post(
             "/api/v1/support-requests/",
             {
@@ -330,6 +338,8 @@ class SupportRequestApiTests(APITestCase):
                 "category": "login",
                 "subject": "Unable to sign in",
                 "message": "The login page returns an error.",
+                "captcha_id": str(captcha.pk), "captcha": "ABCDE",
+                "turnstile_token": TURNSTILE_TEST_TOKEN,
             },
             format="json",
         )
@@ -381,16 +391,102 @@ class SupportRequestApiTests(APITestCase):
         self.assertTrue(any(ticket["id"] == str(guest_ticket.pk) for ticket in all_tickets.data["results"]))
 
     def test_guests_must_provide_contact_email(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.stre.models import StreCaptcha
+        from apps.stre.security import TURNSTILE_TEST_TOKEN, _hash
+
+        captcha = StreCaptcha.objects.create(answer_hash=_hash("ABCDE"), expires_at=timezone.now() + timedelta(minutes=5))
         response = self.client.post(
             "/api/v1/support-requests/",
             {
                 "category": "other",
                 "subject": "Question",
                 "message": "I need help with my account.",
+                "captcha_id": str(captcha.pk), "captcha": "ABCDE",
+                "turnstile_token": TURNSTILE_TEST_TOKEN,
             },
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class WebsiteLiveChatTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+
+    def start_chat(self):
+        from apps.stre.security import make_test_captcha_fields
+
+        return self.client.post(
+            "/api/v1/live-chat/",
+            {
+                "name": "Website Visitor",
+                "email": "visitor@example.com",
+                "message": "I need help with my school account.",
+                **make_test_captcha_fields(),
+            },
+            format="json",
+        )
+
+    def test_visitor_and_staff_exchange_real_messages(self):
+        started = self.start_chat()
+        self.assertEqual(started.status_code, 201, started.data)
+        ticket = SupportRequest.objects.get(pk=started.data["id"])
+        access_token = started.data["access_token"]
+        self.assertNotEqual(ticket.chat_token_hash, access_token)
+        self.assertEqual(len(started.data["messages"]), 1)
+
+        messages_url = f"/api/v1/live-chat/{ticket.pk}/messages/"
+        denied = self.client.get(messages_url)
+        self.assertEqual(denied.status_code, 403)
+
+        visitor_reply = self.client.post(
+            messages_url,
+            {"body": "Can someone explain how to sign in?"},
+            format="json",
+            HTTP_X_CHAT_TOKEN=access_token,
+        )
+        self.assertEqual(visitor_reply.status_code, 201, visitor_reply.data)
+
+        super_admin = User.objects.create_user(
+            email="super@livechat.com", password=PW, role=Role.SUPER_ADMIN
+        )
+        self.client.force_authenticate(super_admin)
+        staff_reply = self.client.post(
+            f"/api/v1/support-requests/{ticket.pk}/messages/",
+            {"body": "A member of our team can help you sign in."},
+            format="json",
+        )
+        self.assertEqual(staff_reply.status_code, 201, staff_reply.data)
+
+        self.client.force_authenticate(None)
+        thread = self.client.get(
+            messages_url, HTTP_X_CHAT_TOKEN=access_token
+        )
+        self.assertEqual(thread.status_code, 200, thread.data)
+        self.assertEqual(
+            [message["sender_type"] for message in thread.data],
+            ["visitor", "visitor", "staff"],
+        )
+        self.assertEqual(thread.data[-1]["body"], "A member of our team can help you sign in.")
+        self.assertEqual(SupportMessage.objects.filter(conversation=ticket).count(), 2)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, SupportRequest.Status.IN_PROGRESS)
+
+    def test_school_admin_cannot_read_global_guest_chat(self):
+        started = self.start_chat()
+        self.assertEqual(started.status_code, 201, started.data)
+        other_school = make_school("chatother")
+        self.client.force_authenticate(other_school["admin"])
+
+        response = self.client.get(
+            f"/api/v1/support-requests/{started.data['id']}/messages/"
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 class AuthTests(APITestCase):
@@ -432,8 +528,15 @@ class AuthTests(APITestCase):
         self.assertEqual(self.client.get("/api/v1/students/").status_code, 401)
 
     def test_student_registration_requires_approval_then_placement(self):
-        from apps.accounts.testutils import login_payload
+        from datetime import timedelta
 
+        from django.utils import timezone
+
+        from apps.accounts.testutils import login_payload
+        from apps.stre.models import StreCaptcha
+        from apps.stre.security import TURNSTILE_TEST_TOKEN, _hash
+
+        captcha = StreCaptcha.objects.create(answer_hash=_hash("ABCDE"), expires_at=timezone.now() + timedelta(minutes=5))
         application = self.client.post("/api/v1/auth/register/", {
             "school_code": self.data["school"].code,
             "role": Role.STUDENT,
@@ -450,6 +553,8 @@ class AuthTests(APITestCase):
             "address": "School Road",
             "course_id": str(self.data["course"].id),
             "academic_year_id": str(self.data["year"].id),
+            "captcha_id": str(captcha.pk), "captcha": "ABCDE",
+            "turnstile_token": TURNSTILE_TEST_TOKEN,
         }, format="json")
         self.assertEqual(application.status_code, 201, application.data)
 

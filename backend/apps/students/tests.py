@@ -268,11 +268,14 @@ class ParentNameTests(APITestCase):
         self.a = make_school("a")
 
     def registration(self, **overrides):
+        from apps.stre.security import make_test_captcha_fields
+
         body = {
             "school_code": "a", "role": "student", "email": "reg@a.com", "password": PW, "first_name": "Reg", "last_name": "Kumar",
             "class_level": "6", "date_of_birth": "2014-02-02", "father_name": "Mohan Lal", "mother_name": "Geeta Devi",
             "guardian_phone": "9876543210", "address": "Main Road", "gender": "F",
             "course_id": str(self.a["course"].id), "academic_year_id": str(self.a["year"].id),
+            **make_test_captcha_fields(),
         }
         body.update(overrides)
         return self.client.post("/api/v1/auth/register/", body, format="json")
@@ -311,11 +314,14 @@ class PhoneAndDobValidationTests(APITestCase):
         self.a = make_school("a")
 
     def registration(self, **overrides):
+        from apps.stre.security import make_test_captcha_fields
+
         body = {
             "school_code": "a", "role": "student", "email": "reg@a.com", "password": PW, "first_name": "Reg", "last_name": "Kumar",
             "class_level": "6", "date_of_birth": "2014-02-02", "father_name": "Mohan", "mother_name": "Geeta",
             "guardian_phone": "9876543210", "address": "Main Road", "gender": "F",
             "course_id": str(self.a["course"].id), "academic_year_id": str(self.a["year"].id),
+            **make_test_captcha_fields(),
         }
         body.update(overrides)
         return self.client.post("/api/v1/auth/register/", body, format="json")
@@ -370,11 +376,14 @@ class NameValidationTests(APITestCase):
         self.a = make_school("a")
 
     def registration(self, **overrides):
+        from apps.stre.security import make_test_captcha_fields
+
         body = {
             "school_code": "a", "role": "student", "email": "n@a.com", "password": PW, "first_name": "Riya", "last_name": "Verma",
             "class_level": "6", "date_of_birth": "2014-02-02", "father_name": "Mohan Lal", "mother_name": "Geeta Devi",
             "guardian_phone": "9876543210", "address": "Main Road", "gender": "F",
             "course_id": str(self.a["course"].id), "academic_year_id": str(self.a["year"].id),
+            **make_test_captcha_fields(),
         }
         body.update(overrides)
         return self.client.post("/api/v1/auth/register/", body, format="json")
@@ -405,11 +414,14 @@ class RegistrationRequiredChoicesTests(APITestCase):
         self.a = make_school("a")
 
     def body(self, **overrides):
+        from apps.stre.security import make_test_captcha_fields
+
         data = {
             "school_code": "a", "role": "student", "email": "g@a.com", "password": PW, "first_name": "Riya", "last_name": "Verma",
             "class_level": "6", "date_of_birth": "2014-02-02", "father_name": "Mohan Lal", "mother_name": "Geeta Devi",
             "guardian_phone": "9876543210", "address": "Main Road", "gender": "F",
             "course_id": str(self.a["course"].id), "academic_year_id": str(self.a["year"].id),
+            **make_test_captcha_fields(),
         }
         data.update(overrides)
         return data

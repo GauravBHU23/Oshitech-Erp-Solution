@@ -27,7 +27,7 @@ function LoginProbe() {
     <div>
       <button onClick={async () => {
         try {
-          await login("user@example.com", "password", ["teacher"], { captcha_id: "challenge-id", captcha: "ABCDE" });
+          await login("user@example.com", "password", ["teacher"], { captcha_id: "challenge-id", captcha: "ABCDE", turnstile_token: "test-token" });
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "Sign-in failed.");
         }

@@ -9,6 +9,8 @@ import Icon from "@/components/Icon";
 import PasswordInput from "@/components/PasswordInput";
 import Spinner from "@/components/Spinner";
 import ThemeToggle from "@/components/ThemeToggle";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -23,6 +25,9 @@ export default function ForgotPasswordPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [wait, setWait] = useState(0);
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("portal");
@@ -41,19 +46,23 @@ export default function ForgotPasswordPage() {
     event?.preventDefault();
     const value = email.trim().toLowerCase();
     if (!EMAIL_RE.test(value)) { setErrors({ email: "Enter the email you use to sign in, e.g. name@example.com." }); return; }
+    if (captcha.captcha.length !== 5) { setErrors({ captcha: "Type the 5 characters shown in the image." }); return; }
+    if (!turnstileToken) { setErrors({ captcha: "Please complete the verification check." }); return; }
     setBusy(true);
     setErrors({});
     try {
-      const res = await api<{ detail: string; resend_after: number }>("/auth/forgot-password/", { method: "POST", body: { email: value, portal }, silent: true });
+      const res = await api<{ detail: string; resend_after: number }>("/auth/forgot-password/", { method: "POST", body: { email: value, portal, ...captcha, turnstile_token: turnstileToken }, silent: true });
       toast.success(res.detail);
       setStep("reset");
       setWait(res.resend_after || 60);
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message.replace(/^email:\s*/, "") : "Could not send the code.";
+      const msg = e instanceof ApiError ? e.message.replace(/^(email|captcha):\s*/, "") : "Could not send the code.";
       setErrors({ email: msg });
       toast.error(msg);
     } finally {
       setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
     }
   };
 
@@ -102,6 +111,8 @@ export default function ForgotPasswordPage() {
                 <input className="input !py-3" type="email" inputMode="email" autoComplete="username" placeholder="name@example.com" value={email} onChange={(e) => { setEmail(e.target.value); setErrors({}); }} />
                 {err("email")}
               </label>
+              <StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} error={errors.captcha} />
+              <TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} />
               <button className="btn-primary w-full !py-3" disabled={busy}>{busy ? <><Spinner className="mr-2" />Sending…</> : "Send reset code"}</button>
             </form>
           )}
@@ -126,8 +137,8 @@ export default function ForgotPasswordPage() {
               </label>
               <button className="btn-primary w-full !py-3" disabled={busy}>{busy ? <><Spinner className="mr-2" />Saving…</> : "Set new password"}</button>
               <div className="flex items-center justify-between text-xs">
-                <button type="button" className="font-semibold text-indigo-600 hover:underline disabled:text-slate-400 disabled:no-underline" disabled={wait > 0 || busy} onClick={() => void requestCode()}>{wait > 0 ? `Resend code in ${wait}s` : "Resend code"}</button>
-                <button type="button" className="text-slate-500 hover:underline" onClick={() => { setStep("email"); setCode(""); setErrors({}); }}>Use another email</button>
+                <span className="text-slate-400">{wait > 0 ? `You can request a new code in ${wait}s` : "Didn't get the code?"}</span>
+                <button type="button" className="font-semibold text-indigo-600 hover:underline disabled:text-slate-400 disabled:no-underline" disabled={wait > 0} onClick={() => { setStep("email"); setCode(""); setErrors({}); }}>Resend / change email</button>
               </div>
             </form>
           )}

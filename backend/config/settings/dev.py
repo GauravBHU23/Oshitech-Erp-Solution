@@ -11,6 +11,10 @@ DEBUG = True
 # console handler (and the test runner's own pass/fail output) still show everything.
 if "test" in sys.argv:
     LOGGING["root"]["handlers"] = [h for h in LOGGING["root"]["handlers"] if h != "error_file"]  # noqa: F405
+    # Tests must use Cloudflare's published dummy test keys regardless of whatever real
+    # Turnstile keys are configured in .env for local/manual testing.
+    TURNSTILE_SITE_KEY = "1x00000000000000000000AA"  # noqa: F405
+    TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA"  # noqa: F405
 ALLOWED_HOSTS = ["*"]
 AUTH_COOKIE_SECURE = False
 # SMTP credentials missing hon to dev me email terminal par print karo;

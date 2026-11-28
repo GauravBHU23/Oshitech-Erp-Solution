@@ -8,6 +8,8 @@ import PublicTicker from "@/components/PublicTicker";
 import PublicNoticeBoard from "@/components/PublicNoticeBoard";
 import TeacherDirectory from "@/components/TeacherDirectory";
 import PublicOverview from "@/components/PublicOverview";
+import WhatsAppFloatingButton from "@/components/WhatsAppFloatingButton";
+import LiveChatWidget from "@/components/LiveChatWidget";
 
 const modules = [
   { n: "01", icon: "book", title: "Academic foundation", text: "Set academic years, courses, subjects and classrooms in one connected structure." },
@@ -137,5 +139,7 @@ export default function Home() {
     <section className="px-4 py-10 sm:px-8 sm:py-14"><div className="home-cta mx-auto max-w-7xl overflow-hidden rounded-[28px] bg-gradient-to-r from-indigo-50 via-white to-cyan-50 px-6 py-10 text-slate-900 sm:px-10 sm:py-12"><div className="flex flex-col justify-between gap-7 md:flex-row md:items-center"><div className="max-w-2xl"><p className="text-[11px] font-bold uppercase tracking-[.2em] text-indigo-700">Oshitech Education ERP</p><h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Bring your school operations into one clear workspace.</h2><p className="mt-3 text-sm leading-6 text-slate-600">Sign in to continue to your role based portal for school, teaching, examinations or student services.</p></div><Link href={user ? "/dashboard" : "/login"} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#20274a] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-indigo-700">{user ? "Open dashboard" : "Go to portal login"}<Icon name="arrow" size={16} /></Link></div></div></section>
 
     <MarketingFooter />
+    <LiveChatWidget />
+    <WhatsAppFloatingButton />
   </main>;
 }

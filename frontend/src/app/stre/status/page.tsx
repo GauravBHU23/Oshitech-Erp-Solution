@@ -9,6 +9,7 @@ import Icon from "@/components/Icon";
 import Spinner from "@/components/Spinner";
 import StrePayment from "@/components/StrePayment";
 import StreShell from "@/components/StreShell";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 type RegistrationStatus = Pick<StrePublicReg, "access_token" | "status" | "status_label" | "registration_no" | "amount" | "payment_reference" | "payment_attempts" | "last_payment_status" | "last_payment_error">;
@@ -18,6 +19,7 @@ export default function StreStatusPage() {
   const [mobile, setMobile] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [captchaKey, setCaptchaKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [reg, setReg] = useState<RegistrationStatus | null>(null);
@@ -59,11 +61,12 @@ export default function StreStatusPage() {
     if (!/^[A-Z0-9]+-\d{6}$/.test(regNo.trim().toUpperCase())) e.registration_no = "Enter the registration number from your email, e.g. STRE2026-000123.";
     if (!isValidPhone(mobile)) e.mobile = "Enter the 10-digit mobile number used while registering.";
     if (captcha.captcha.length !== 5) e.captcha = "Type the 5 characters shown in the image.";
+    else if (!turnstileToken) e.captcha = "Please complete the verification check.";
     setErrors(e);
     if (Object.keys(e).length) { toast.error("Please check the highlighted fields."); return; }
     setBusy(true);
     try {
-      const data = await api<RegistrationStatus>("/stre/status/", { method: "POST", body: { registration_no: regNo.trim().toUpperCase(), mobile, ...captcha }, silent: true });
+      const data = await api<RegistrationStatus>("/stre/status/", { method: "POST", body: { registration_no: regNo.trim().toUpperCase(), mobile, ...captcha, turnstile_token: turnstileToken }, silent: true });
       setReg(data);
       window.history.replaceState(null, "", `/stre/status?token=${data.access_token}`);
     } catch (err) {
@@ -170,6 +173,7 @@ export default function StreStatusPage() {
                   {errors.mobile && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.mobile}</span>}
                 </label>
                 <div className="sm:col-span-2"><StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={captchaKey} error={errors.captcha} /></div>
+                <div className="sm:col-span-2"><TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={captchaKey} /></div>
               </div>
               <button className="btn-primary w-full !py-3 text-sm sm:w-auto sm:px-10" disabled={busy}>{busy ? <Spinner /> : "Check status"}</button>
             </form>

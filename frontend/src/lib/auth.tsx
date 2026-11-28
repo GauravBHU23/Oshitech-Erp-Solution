@@ -6,7 +6,7 @@ import type { Role, User } from "./types";
 interface AuthCtx {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string, allowedRoles: Role[], captcha: { captcha_id: string; captcha: string }) => Promise<User>;
+  login: (email: string, password: string, allowedRoles: Role[], captcha: { captcha_id: string; captcha: string; turnstile_token: string }) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User>;
 }
@@ -64,10 +64,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [checkSession]);
 
-  const login = useCallback(async (email: string, password: string, allowedRoles: Role[], captcha: { captcha_id: string; captcha: string }): Promise<User> => {
+  const login = useCallback(async (email: string, password: string, allowedRoles: Role[], captcha: { captcha_id: string; captcha: string; turnstile_token: string }): Promise<User> => {
     authRevision.current += 1;
     setLoading(false);
-    const r = await api<{ user: User }>("/auth/login/", { method: "POST", body: { email, password, ...captcha } });
+    const r = await api<{ user: User }>("/auth/login/", {
+      method: "POST",
+      body: { email, password, portal_role: allowedRoles[0], ...captcha },
+      silent: true,
+    });
     if (!allowedRoles.includes(r.user.role)) {
       await api("/auth/logout/", { method: "POST" }).catch(() => {});
       authRevision.current += 1;

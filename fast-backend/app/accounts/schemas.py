@@ -8,13 +8,7 @@ from pydantic import AliasChoices, BaseModel, EmailStr, Field
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
-    captcha_id: uuid.UUID
-    captcha: str = Field(max_length=10)
-
-
-class CaptchaOut(BaseModel):
-    id: str
-    svg: str
+    turnstile_token: str = Field(max_length=2048)
 
 
 class UserOut(BaseModel):

@@ -30,7 +30,7 @@ const sections: LegalSection[] = [
     "Public QR verification pages show only minimal details (name, exam/school and validity), never contact details or documents.",
   ] },
   { id: "security", title: "How we protect it", body: [
-    ["Passwords are stored as strong one-way hashes; one-time codes are stored hashed and expire quickly.", "Role-based access, separate school data, and an audit log of important actions.", "Sessions sign out after inactivity and expire after a fixed time.", "Email OTP verification and captcha on public lookups to block misuse."],
+    ["Passwords are stored as strong one-way hashes; one-time codes are stored hashed and expire quickly.", "Role-based access, separate school data, and an audit log of important actions.", "Sessions sign out after inactivity and expire after a fixed time.", "Email OTP verification and a Cloudflare Turnstile check on public lookups to block misuse."],
     "No system is completely secure; please keep your password private and report anything suspicious to us.",
   ] },
   { id: "cookies", title: "Cookies and local storage", body: [

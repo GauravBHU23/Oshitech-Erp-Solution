@@ -1,6 +1,6 @@
 "use client";
 
-import { streClassLabel, streSchoolFieldLabel, type StrePublicReg } from "@/lib/stre";
+import { streCasteCategoryLabel, streClassLabel, streGenderLabel, streSchoolFieldLabel, streStateLabel, type StrePublicReg } from "@/lib/stre";
 
 type Exam = { title: string; code: string; exam_date: string; exam_time: string; last_date: string; fee: string; venue: string; instructions: string };
 
@@ -46,16 +46,19 @@ export default function StreOfflineForm({
       )}
 
       <section>
-        <h2>Student details</h2>
+        <h2>Student Details</h2>
         <div className="stre-form-grid">
-          <Field label="First name" value={confirmation ? result.full_name : v.first_name} wide={!confirmation} />
-          {!confirmation && <Field label="Last name" value={v.last_name} />}
-          <Field label="Father's name" value={confirmation ? undefined : v.father_name} />
-          <Field label="Class / qualification" value={confirmation ? undefined : streClassLabel(v.class_level)} />
+          <Field label="First Name" value={confirmation ? result.full_name : v.first_name} wide={!confirmation} />
+          {!confirmation && <Field label="Last Name" value={v.last_name} />}
+          <Field label="Father's Name" value={confirmation ? undefined : v.father_name} />
+          <Field label="Gender" value={streGenderLabel(v.gender)} />
+          <Field label="Caste category" value={streCasteCategoryLabel(v.caste_category)} />
+          <Field label="State" value={streStateLabel(v.state_code)} />
+          <Field label="Qualification" value={confirmation ? undefined : streClassLabel(v.class_level)} />
           <Field label={streSchoolFieldLabel(v.class_level)} value={confirmation ? undefined : v.school_name} wide />
-          <Field label="Mobile number" value={confirmation ? result.mobile : v.mobile} />
+          <Field label="Mobile Number" value={confirmation ? result.mobile : v.mobile} />
           <Field label="Email" value={confirmation ? result.email : v.email} />
-          <Field label="Aadhaar number" value={confirmation ? undefined : v.aadhaar_number} />
+          <Field label="Aadhaar Number" value={confirmation ? undefined : v.aadhaar_number} />
           <Field label="Subject" value={confirmation ? result.subject : v.subject} />
           <Field label="Address" value={confirmation ? undefined : v.address} wide />
         </div>
@@ -63,17 +66,17 @@ export default function StreOfflineForm({
 
       {!confirmation && (
         <section>
-          <h2>Interests and goals</h2>
+          <h2>Interests & Goals</h2>
           <div className="stre-form-grid">
-            <Field label="Hobbies / interests" value={interests?.join(", ")} wide />
-            <Field label="Subject interest" value={v.subject_interest} wide />
-            <Field label="Aim of life" value={v.aim_of_life} wide />
+            <Field label="Hobbies & Interests" value={interests?.join(", ")} wide />
+            <Field label="Subject Interest" value={v.subject_interest} wide />
+            <Field label="Aim Of Life" value={v.aim_of_life} wide />
           </div>
         </section>
       )}
 
       <section>
-        <h2>Exam details</h2>
+        <h2>Exam Details</h2>
         <div className="stre-form-grid">
           <Field label="Exam date (tentative)" value={exam.exam_date} />
           <Field label="Reporting / exam time" value={exam.exam_time || "To be announced"} />

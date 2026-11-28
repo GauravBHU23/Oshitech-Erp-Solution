@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import { formatDate, STRE_CLASS_LEVELS, STRE_COLLEGE_LEVELS, streClassLabel, streSchoolFieldLabel, type StrePaymentInfo, type StrePublicReg } from "@/lib/stre";
+import { formatDate, STRE_CASTE_CATEGORIES, STRE_GENDERS, STRE_STATES, STRE_CLASS_LEVELS, STRE_COLLEGE_LEVELS, streCasteCategoryLabel, streClassLabel, streGenderLabel, streSchoolFieldLabel, streStateLabel, type StreExamSlot, type StrePaymentInfo, type StrePublicReg } from "@/lib/stre";
 import { toast } from "@/lib/toast";
 import { imageErrorMessage, shrinkPhoto, shrinkSignature } from "@/lib/image";
 import { PHONE_HINT, cleanPhone, fieldErrors, isValidPhone, nameError } from "@/lib/validation";
@@ -12,9 +12,12 @@ import StrePayment from "@/components/StrePayment";
 import StreShell from "@/components/StreShell";
 import EmailOtpField from "@/components/EmailOtpField";
 import StreOfflineForm from "@/components/StreOfflineForm";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 type Info = {
   exam: null | { title: string; code: string; exam_date: string; exam_time: string; last_date: string; fee: string; venue: string; instructions: string };
+  slots: StreExamSlot[];
   subjects: string[];
   interest_options: string[];
   payment: StrePaymentInfo;
@@ -26,9 +29,9 @@ const CAPITALIZED_FIELDS = new Set([
   "subject", "subject_interest", "aim_of_life",
 ]);
 const LABELS: Record<string, string> = {
-  first_name: "First name", last_name: "Last name", email: "Email", mobile: "Mobile number", father_name: "Father's name", school_name: "School / college name", class_level: "Class / qualification", address: "Address",
-  subject: "Subject", subject_interest: "Subject interest", interests: "Hobbies & interests", aim_of_life: "Aim of life",
-  aadhaar_number: "Aadhaar number", photo: "Photo", signature: "Signature",
+  first_name: "First Name", last_name: "Last Name", email: "Email", mobile: "Mobile Number", father_name: "Father's Name", gender: "Gender", caste_category: "Caste Category", state_code: "State", school_name: "School / College Name", class_level: "Qualification", address: "Address",
+  subject: "Subject", subject_interest: "Subject Interest", interests: "Hobbies & Interests", aim_of_life: "Aim Of Life", slot: "Exam Slot",
+  aadhaar_number: "Aadhaar Number", photo: "Photo", signature: "Signature",
 };
 
 function Req() { return <span className="text-red-500" aria-hidden="true"> *</span>; }
@@ -129,20 +132,23 @@ async function printStreOfflineForm(
     .foot-note { position:absolute; bottom:4mm; left:8mm; right:8mm; z-index:1; display:flex; justify-content:space-between; border-top:1px solid #d6d3d1; padding-top:1.5mm; font-family:Arial,sans-serif; color:#a8a29e; font-size:6.5pt; letter-spacing:.03em }
   </style></head><body><article class="sheet"><header><span class="crest">O</span><div class="title-block"><p>Student Talent Recognition Exam</p><h1>${confirmation ? "Registration Acknowledgement" : "Offline Registration Form"}</h1><span>${escapeHtml(exam.title)} &middot; ${escapeHtml(exam.code)}</span></div><div class="regno"><em>${confirmation ? "Registration no." : "Application ID"}</em><b>${confirmation ? escapeHtml(result.registration_no) : "To be generated"}</b></div></header><div class="body">
   ${confirmation ? `<div class="confirmation"><div><span>Registration number</span><b>${escapeHtml(result.registration_no)}</b></div><div><span>Status</span><b>${escapeHtml(result.status_label)}</b></div><div><span>Roll number</span><b>${escapeHtml(result.roll_no || "To be issued")}</b></div></div>` : `<p class="note">Please fill in block letters. This sheet can be printed and kept for your records. Submit the online form to complete registration.</p>`}
-  <section class="student-details"><h2><span class="num">1</span>Student details</h2><div class="grid">
-    ${field("First name", confirmation ? escapeHtml(result.full_name) : v("first_name"), !confirmation)}
-    ${!confirmation ? field("Last name", v("last_name")) : ""}
-    ${field("Father's name", confirmation ? "" : v("father_name"))}
-    ${field("Class / qualification", confirmation ? "" : escapeHtml(streClassLabel(values.class_level)))}
+  <section class="student-details"><h2><span class="num">1</span>Student Details</h2><div class="grid">
+    ${field("First Name", confirmation ? escapeHtml(result.full_name) : v("first_name"), !confirmation)}
+    ${!confirmation ? field("Last Name", v("last_name")) : ""}
+    ${field("Father's Name", confirmation ? "" : v("father_name"))}
+    ${field("Gender", streGenderLabel(v("gender")))}
+    ${field("Caste Category", streCasteCategoryLabel(v("caste_category")))}
+    ${field("State", streStateLabel(v("state_code")))}
+    ${field("Qualification", confirmation ? "" : escapeHtml(streClassLabel(values.class_level)))}
     ${field(streSchoolFieldLabel(values.class_level), confirmation ? "" : v("school_name"), true)}
-    ${field("Mobile number", confirmation ? escapeHtml(result.mobile) : v("mobile"))}
+    ${field("Mobile Number", confirmation ? escapeHtml(result.mobile) : v("mobile"))}
     ${field("Email", confirmation ? escapeHtml(result.email) : v("email"))}
-    ${field("Aadhaar number", confirmation ? "" : v("aadhaar_number"))}
+    ${field("Aadhaar Number", confirmation ? "" : v("aadhaar_number"))}
     ${field("Subject", confirmation ? escapeHtml(result.subject) : v("subject"))}
     ${field("Address", confirmation ? "" : v("address"), true)}
   </div><div class="photo-slot">${photoDataUrl ? `<img src="${photoDataUrl}" alt="Candidate photo">` : ""}<span>Passport-size photo</span></div></section>
-  ${confirmation ? "" : `<section><h2><span class="num">2</span>Interests and goals</h2><div class="grid">${field("Hobbies / interests", escapeHtml(interests.join(", ")), true)}${field("Subject interest", v("subject_interest"), true)}${field("Aim of life", v("aim_of_life"), true)}</div></section>`}
-  <section><h2><span class="num">${confirmation ? "2" : "3"}</span>Exam details</h2><div class="grid">${field("Exam date (tentative)", escapeHtml(formatDate(exam.exam_date)))}${field("Reporting / exam time", escapeHtml(exam.exam_time || "To be announced"))}${field("Registration closes", escapeHtml(formatDate(exam.last_date)))}${field("Registration fee", fee)}${field("Venue", escapeHtml(exam.venue || "To be announced"), true)}</div></section>
+  ${confirmation ? "" : `<section><h2><span class="num">2</span>Interests & Goals</h2><div class="grid">${field("Hobbies & Interests", escapeHtml(interests.join(", ")), true)}${field("Subject Interest", v("subject_interest"), true)}${field("Aim Of Life", v("aim_of_life"), true)}</div></section>`}
+  <section><h2><span class="num">${confirmation ? "2" : "3"}</span>Exam Details</h2><div class="grid">${field("Exam Date (Tentative)", escapeHtml(formatDate(exam.exam_date)))}${field("Reporting / Exam Time", escapeHtml(exam.exam_time || "To Be Announced"))}${field("Registration Closes", escapeHtml(formatDate(exam.last_date)))}${field("Registration Fee", fee)}${field("Venue", escapeHtml(exam.venue || "To Be Announced"), true)}</div></section>
   <section class="declaration"><h3>Candidate declaration</h3><p>I declare that the information provided is true and complete. I agree to follow the examination rules and will bring the required identity proof and admit card to the examination centre.</p><div class="checklist"><div><b></b>Photo attached</div><div><b></b>Details verified</div><div><b></b>Fee / rules accepted</div></div></section>
   <div class="verification"><div><span>Application ID</span><b>${confirmation ? escapeHtml(result.registration_no) : "To be generated"}</b></div><div><span>Exam centre</span><b>${escapeHtml(exam.venue || "To be announced")}</b></div><div><span>Office stamp</span><b></b></div></div>
   <footer><div><span>Student signature</span></div><div><span>Parent / guardian signature</span></div></footer>
@@ -187,6 +193,9 @@ export default function StreRegisterPage() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<StrePublicReg | null>(null);
   const [emailToken, setEmailToken] = useState("");
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   useEffect(() => {
     api<Info>("/stre/public/").then(setInfo).catch(() => setLoadError("Could not load exam details. Check your connection and refresh."));
@@ -230,18 +239,24 @@ export default function StreRegisterPage() {
     const e: Record<string, string> = {};
     for (const k of ["first_name", "last_name", "father_name"]) { const m = nameError(v[k] ?? ""); if (m) e[k] = m; }
     if (!v.class_level) e.class_level = "Select your class or qualification.";
+    if (!v.gender) e.gender = "Select your gender.";
+    if (!v.caste_category) e.caste_category = "Select your caste category.";
+    if (!v.state_code) e.state_code = "Select your state or union territory.";
     if ((v.school_name ?? "").trim().length < 3) e.school_name = `Enter your ${streSchoolFieldLabel(v.class_level).toLowerCase()}.`;
     if ((v.address ?? "").trim().length < 10) e.address = "Enter your full address (house, area, city, PIN code).";
     if (!v.email) e.email = "This field is required.";
     else if (!emailToken) e.email = "Please verify your email with the OTP (tap “Verify email”).";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) e.email = "Enter a valid email address, e.g. name@example.com.";
     if (!v.mobile) e.mobile = "This field is required."; else if (!isValidPhone(v.mobile)) e.mobile = PHONE_HINT;
+    if (info?.slots.length && !v.slot) e.slot = "Select an exam slot.";
     if (subject.trim().length < 2) e.subject = "Type your subject, e.g. Mathematics.";
     if (!interests.length) e.interests = "Choose at least one interest or add your own skill.";
     if ((v.aim_of_life ?? "").trim().length < 5) e.aim_of_life = "Please write a few words about your aim in life.";
     if (!/^\d{12}$/.test(v.aadhaar_number ?? "")) e.aadhaar_number = "Aadhaar number must have exactly 12 digits.";
     if (!photo) e.photo = "Upload your photo.";
     if (!signature) e.signature = "Upload your signature.";
+    if (captcha.captcha.length !== 5) e.captcha = "Type the 5 characters shown in the image.";
+    else if (!turnstileToken) e.captcha = "Please complete the verification check.";
     return e;
   };
 
@@ -256,10 +271,14 @@ export default function StreRegisterPage() {
     }
     setBusy(true);
     const form = new FormData();
-    for (const k of ["first_name", "last_name", "email", "mobile", "father_name", "class_level", "school_name", "address", "subject_interest", "aim_of_life", "aadhaar_number"]) form.append(k, (v[k] ?? "").trim());
+    for (const k of ["first_name", "last_name", "email", "mobile", "father_name", "gender", "caste_category", "state_code", "class_level", "school_name", "address", "subject_interest", "aim_of_life", "aadhaar_number"]) form.append(k, (v[k] ?? "").trim());
     form.append("subject", subject.trim());
+    if (v.slot) form.append("slot", v.slot);
     interests.forEach((i) => form.append("interests", i));
     form.append("email_token", emailToken);
+    form.append("captcha_id", captcha.captcha_id);
+    form.append("captcha", captcha.captcha);
+    form.append("turnstile_token", turnstileToken);
     form.append("photo", photo as File);
     form.append("signature", signature as File);
     try {
@@ -275,6 +294,8 @@ export default function StreRegisterPage() {
       toast.error(keys.length ? `Please correct: ${keys.map((k) => LABELS[k] ?? k).join(", ")}.` : err instanceof ApiError ? err.message : "Registration failed. Try again.");
     } finally {
       setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
     }
   };
 
@@ -308,6 +329,7 @@ export default function StreRegisterPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Registration number</p><p className="mt-1 select-all font-mono text-lg font-bold text-slate-900">{done.registration_no}</p></div>
               <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Status</p><p className="mt-1 text-sm font-semibold text-slate-900">{done.status_label}</p></div>
+              {done.slot_label && <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Exam slot</p><p className="mt-1 text-sm font-semibold text-slate-900">{done.slot_label}{done.slot_time ? ` — ${done.slot_time}` : ""}</p></div>}
             </div>
             {info && <StrePayment reg={done} payment={info.payment} onUpdate={setDone} autoStart />}
             {done.status === "paid" && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Payment received — your registration is confirmed{done.roll_no ? ` (Roll no. ${done.roll_no})` : ""}. The admit card will be available after the exam cell issues it.</p>}
@@ -318,7 +340,7 @@ export default function StreRegisterPage() {
               {info?.exam && <button type="button" className="btn-ghost" onClick={() => void printStreOfflineForm(info.exam, v, interests, done)}><Icon name="printer" size={16} className="mr-2" />Download / Print PDF</button>}
             </div>
           </div>
-          {info?.exam && <StreOfflineForm exam={info.exam} result={done} />}
+          {info?.exam && <StreOfflineForm exam={info.exam} result={done} values={v} interests={interests} />}
         </section>
       </StreShell>
     );
@@ -351,50 +373,80 @@ export default function StreRegisterPage() {
 
         {info?.exam && (
           <form onSubmit={submit} noValidate className="space-y-7 p-5 sm:p-8">
-            <p className="mandatory-note flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600"><span className="text-base font-bold leading-4 text-red-500">*</span><span>Fields marked with a red star are mandatory.</span></p>
+            <p className="mandatory-note flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600"><span className="text-base font-bold leading-4 text-red-500">*</span><span>Fields Marked With A Red Star Are Mandatory.</span></p>
 
             <section>
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs text-indigo-700">01</span>Student details</h2>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs text-indigo-700">01</span>Student Details</h2>
               <div className="grid gap-3 sm:grid-cols-2">
-                {field("first_name", "First name", { autoComplete: "given-name", maxLength: 100 })}
-                {field("last_name", "Last name", { autoComplete: "family-name", maxLength: 100 })}
+                {field("first_name", "First Name", { autoComplete: "given-name", maxLength: 100 })}
+                {field("last_name", "Last Name", { autoComplete: "family-name", maxLength: 100 })}
                 <div className="sm:col-span-2"><EmailOtpField value={v.email ?? ""} onChange={(email) => { set("email", email); if (emailToken) setEmailToken(""); }} token={emailToken} onToken={(t) => { setEmailToken(t); setErrors((x) => ({ ...x, email: "" })); }} error={errors.email} /></div>
-                <label className={`block text-xs font-semibold text-slate-800 ${errors.mobile ? "has-error" : ""}`}>Mobile number<Req />
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.mobile ? "has-error" : ""}`}>Mobile Number<Req />
                   <input id="stre-mobile" name="mobile" className="input mt-1.5" type="tel" inputMode="tel" maxLength={14} placeholder="9876543210" value={v.mobile ?? ""} aria-invalid={errors.mobile ? true : undefined} onChange={(e) => set("mobile", cleanPhone(e.target.value))} />
-                  {!errors.mobile && <span className="mt-1 block text-[11px] font-normal text-slate-500">10-digit mobile number</span>}
+                  {!errors.mobile && <span className="mt-1 block text-[11px] font-normal text-slate-500">10-Digit Mobile Number</span>}
                   <Err msg={errors.mobile} />
                 </label>
-                {field("father_name", "Father's name", { maxLength: 150 })}
-                <label className={`block text-xs font-semibold text-slate-800 ${errors.class_level ? "has-error" : ""}`}>Class / qualification<span className="text-red-500" aria-hidden="true"> *</span>
+                {field("father_name", "Father's Name", { maxLength: 150 })}
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.gender ? "has-error" : ""}`}>Gender<Req />
+                  <select id="stre-gender" name="gender" className="input mt-1.5" value={v.gender ?? ""} aria-invalid={errors.gender ? true : undefined} onChange={(e) => set("gender", e.target.value)}>
+                    <option value="">Select Gender</option>
+                    {STRE_GENDERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <Err msg={errors.gender} />
+                </label>
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.caste_category ? "has-error" : ""}`}>Caste Category<Req />
+                  <select id="stre-caste_category" name="caste_category" className="input mt-1.5" value={v.caste_category ?? ""} aria-invalid={errors.caste_category ? true : undefined} onChange={(e) => set("caste_category", e.target.value)}>
+                    <option value="">Select Category</option>
+                    {STRE_CASTE_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <Err msg={errors.caste_category} />
+                </label>
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.state_code ? "has-error" : ""}`}>State<Req />
+                  <select id="stre-state_code" name="state_code" className="input mt-1.5" value={v.state_code ?? ""} aria-invalid={errors.state_code ? true : undefined} onChange={(e) => set("state_code", e.target.value)}>
+                    <option value="">Select State</option>
+                    {STRE_STATES.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}
+                  </select>
+                  <Err msg={errors.state_code} />
+                </label>
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.class_level ? "has-error" : ""}`}>Qualification<span className="text-red-500" aria-hidden="true"> *</span>
                   <select id="stre-class_level" name="class_level" className="input mt-1.5" value={v.class_level ?? ""} aria-invalid={errors.class_level ? true : undefined} onChange={(e) => set("class_level", e.target.value)}>
-                    <option value="">Select class / qualification</option>
+                    <option value="">Select Qualification</option>
                     {STRE_CLASS_LEVELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                   {errors.class_level && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.class_level}</span>}
                 </label>
+                {info.slots.length > 0 && (
+                  <label className={`block text-xs font-semibold text-slate-800 ${errors.slot ? "has-error" : ""}`}>Exam Slot<Req />
+                    <select id="stre-slot" name="slot" className="input mt-1.5" value={v.slot ?? ""} aria-invalid={errors.slot ? true : undefined} onChange={(e) => set("slot", e.target.value)}>
+                      <option value="">Select Slot</option>
+                      {info.slots.map((s) => <option key={s.id} value={s.id}>{s.label}{s.slot_time ? ` — ${s.slot_time}` : ""}</option>)}
+                    </select>
+                    {errors.slot && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.slot}</span>}
+                  </label>
+                )}
                 <label className={`block text-xs font-semibold text-slate-800 ${errors.school_name ? "has-error" : ""}`}>{streSchoolFieldLabel(v.class_level)}<Req />
-                  <input id="stre-school_name" name="school_name" className="input mt-1.5" maxLength={200} placeholder={STRE_COLLEGE_LEVELS.has(v.class_level ?? "") ? "e.g. Banaras Hindu University, Varanasi" : "e.g. Kendriya Vidyalaya BHU, Varanasi"} value={v.school_name ?? ""} aria-invalid={errors.school_name ? true : undefined} onChange={(e) => set("school_name", e.target.value)} />
+                  <input id="stre-school_name" name="school_name" className="input mt-1.5" maxLength={200} placeholder={STRE_COLLEGE_LEVELS.has(v.class_level ?? "") ? "E.g. Banaras Hindu University, Varanasi" : "E.g. Kendriya Vidyalaya BHU, Varanasi"} value={v.school_name ?? ""} aria-invalid={errors.school_name ? true : undefined} onChange={(e) => set("school_name", e.target.value)} />
                   <Err msg={errors.school_name} />
                 </label>
                 <label className={`block text-xs font-semibold text-slate-800 sm:col-span-2 ${errors.address ? "has-error" : ""}`}>Address<span className="text-red-500" aria-hidden="true"> *</span>
-                  <textarea id="stre-address" name="address" className="input mt-1.5" rows={2} maxLength={500} autoComplete="street-address" placeholder="House no., street, area, city, district, PIN code" value={v.address ?? ""} aria-invalid={errors.address ? true : undefined} onChange={(e) => set("address", e.target.value)} />
+                  <textarea id="stre-address" name="address" className="input mt-1.5" rows={2} maxLength={500} autoComplete="street-address" placeholder="House No., Street, Area, City, District, PIN Code" value={v.address ?? ""} aria-invalid={errors.address ? true : undefined} onChange={(e) => set("address", e.target.value)} />
                   {errors.address && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.address}</span>}
                 </label>
                 <label className={`block text-xs font-semibold text-slate-800 ${errors.subject ? "has-error" : ""}`}>Subject<Req />
-                  <input id="stre-subject" className="input mt-1.5" maxLength={100} placeholder="Type your subject, e.g. Mathematics" autoComplete="off" value={v.subject ?? ""} aria-invalid={errors.subject ? true : undefined} onChange={(e) => set("subject", e.target.value)} />
+                  <input id="stre-subject" className="input mt-1.5" maxLength={100} placeholder="Type Your Subject, E.g. Mathematics" autoComplete="off" value={v.subject ?? ""} aria-invalid={errors.subject ? true : undefined} onChange={(e) => set("subject", e.target.value)} />
                   <Err msg={errors.subject} />
                 </label>
               </div>
             </section>
 
             <section>
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs text-indigo-700">02</span>Interests & goals</h2>
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs text-indigo-700">02</span>Interests & Goals</h2>
               <div className="grid gap-4">
-                <label className="block text-xs font-semibold text-slate-800">Subject interest <span className="font-normal text-slate-400">(optional)</span>
-                  <input id="stre-subject_interest" className="input mt-1.5" maxLength={1000} placeholder="e.g. Algebra, Physics experiments" value={v.subject_interest ?? ""} onChange={(e) => set("subject_interest", e.target.value)} />
+                <label className="block text-xs font-semibold text-slate-800">Subject Interest <span className="font-normal text-slate-400">(Optional)</span>
+                  <input id="stre-subject_interest" className="input mt-1.5" maxLength={1000} placeholder="E.g. Algebra, Physics Experiments" value={v.subject_interest ?? ""} onChange={(e) => set("subject_interest", e.target.value)} />
                 </label>
                 <div className={`block text-xs font-semibold text-slate-800 ${errors.interests ? "has-error" : ""}`}>
-                  <label htmlFor="stre-interests">Hobbies & interests<Req /> <span className="font-normal text-slate-500">— select one or more</span></label>
+                  <label htmlFor="stre-interests">Hobbies & Interests<Req /> <span className="font-normal text-slate-500">— Select One Or More</span></label>
                   <select
                     id="stre-interests"
                     className="input mt-1.5"
@@ -406,13 +458,13 @@ export default function StreRegisterPage() {
                       if (value && !interests.includes(value)) { setInterests((list) => [...list, value]); setErrors((x) => ({ ...x, interests: "" })); }
                     }}
                   >
-                    <option value="">{interests.length ? "Select another interest" : "Select interest"}</option>
+                    <option value="">{interests.length ? "Select Another Interest" : "Select Interest"}</option>
                     {info.interest_options.filter((o) => !interests.includes(o)).map((o) => <option key={o} value={o}>{o}</option>)}
-                    <option value={OTHER}>Other — add my own skill</option>
+                    <option value={OTHER}>Other — Add My Own Skill</option>
                   </select>
                   {showCustomSkill && (
                     <div className="mt-2 flex gap-2">
-                      <input className="input" autoFocus maxLength={60} placeholder="Type your skill / hobby (e.g. Chess)" value={customSkill} onChange={(e) => setCustomSkill(capitalizeInitials(e.target.value))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} />
+                      <input className="input" autoFocus maxLength={60} placeholder="Type Your Skill / Hobby (E.g. Chess)" value={customSkill} onChange={(e) => setCustomSkill(capitalizeInitials(e.target.value))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(); } }} />
                       <button type="button" className="btn-ghost shrink-0" onClick={addSkill} disabled={customSkill.trim().length < 2}>+ Add</button>
                     </div>
                   )}
@@ -428,8 +480,8 @@ export default function StreRegisterPage() {
                   )}
                   <Err msg={errors.interests} />
                 </div>
-                <label className={`block text-xs font-semibold text-slate-800 ${errors.aim_of_life ? "has-error" : ""}`}>Aim of life<Req />
-                  <textarea id="stre-aim_of_life" className="input mt-1.5" rows={3} maxLength={1000} placeholder="What do you want to become, and why?" value={v.aim_of_life ?? ""} aria-invalid={errors.aim_of_life ? true : undefined} onChange={(e) => set("aim_of_life", e.target.value)} />
+                <label className={`block text-xs font-semibold text-slate-800 ${errors.aim_of_life ? "has-error" : ""}`}>Aim Of Life<Req />
+                  <textarea id="stre-aim_of_life" className="input mt-1.5" rows={3} maxLength={1000} placeholder="What Do You Want To Become, And Why?" value={v.aim_of_life ?? ""} aria-invalid={errors.aim_of_life ? true : undefined} onChange={(e) => set("aim_of_life", e.target.value)} />
                   <Err msg={errors.aim_of_life} />
                 </label>
               </div>
@@ -438,9 +490,9 @@ export default function StreRegisterPage() {
             <section>
               <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs text-indigo-700">03</span>Documents</h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className={`block text-xs font-semibold text-slate-800 sm:col-span-2 ${errors.aadhaar_number ? "has-error" : ""}`}>Student Aadhaar number<Req />
-                  <input id="stre-aadhaar_number" className="input mt-1.5 font-mono tracking-wider" inputMode="numeric" autoComplete="off" maxLength={12} placeholder="12-digit Aadhaar number" value={v.aadhaar_number ?? ""} aria-invalid={errors.aadhaar_number ? true : undefined} onChange={(e) => set("aadhaar_number", e.target.value.replace(/\D/g, "").slice(0, 12))} />
-                  {!errors.aadhaar_number && <span className="mt-1 block text-[11px] font-normal text-slate-500">Stored encrypted. Only the last 4 digits appear on the admit card.</span>}
+                <label className={`block text-xs font-semibold text-slate-800 sm:col-span-2 ${errors.aadhaar_number ? "has-error" : ""}`}>Student Aadhaar Number<Req />
+                  <input id="stre-aadhaar_number" className="input mt-1.5 font-mono tracking-wider" inputMode="numeric" autoComplete="off" maxLength={12} placeholder="12-Digit Aadhaar Number" value={v.aadhaar_number ?? ""} aria-invalid={errors.aadhaar_number ? true : undefined} onChange={(e) => set("aadhaar_number", e.target.value.replace(/\D/g, "").slice(0, 12))} />
+                  {!errors.aadhaar_number && <span className="mt-1 block text-[11px] font-normal text-slate-500">Stored Encrypted. Only The Last 4 Digits Appear On The Admit Card.</span>}
                   <Err msg={errors.aadhaar_number} />
                 </label>
                 {(["photo", "signature"] as const).map((kind) => (
@@ -459,6 +511,11 @@ export default function StreRegisterPage() {
                 ))}
               </div>
             </section>
+
+            <div className="space-y-3">
+              <StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} />
+              <TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} error={errors.captcha} />
+            </div>
 
             <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[11px] leading-5 text-slate-500">By submitting, you confirm the details are correct. {Number(info.exam.fee) > 0 ? `A fee of ₹${Number(info.exam.fee).toLocaleString("en-IN")} is payable after registration.` : ""}</p>

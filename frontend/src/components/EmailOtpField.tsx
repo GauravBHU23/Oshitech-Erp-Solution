@@ -41,7 +41,7 @@ export default function EmailOtpField({ value, onChange, token, onToken, error, 
       setWait(res.resend_after || 60);
       toast.success(res.detail);
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message.replace(/^email:\s*/, "") : "Could not send the OTP.";
+      const msg = e instanceof ApiError ? e.message.replace(/^(email|captcha):\s*/, "") : "Could not send the OTP.";
       setLocalError(msg);
       toast.error(msg);
     } finally {

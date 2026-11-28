@@ -167,22 +167,38 @@ button:active:not(:disabled) { transform: translateY(0) scale(.97); transition-d
   .registration-slip-page * { visibility: hidden !important; }
   .registration-slip-page .registration-approval-slip,
   .registration-slip-page .registration-approval-slip * { visibility: visible !important; }
-  .registration-slip-page { position: relative !important; min-height: 0 !important; }
+  .registration-slip-page { position: static !important; min-height: 0 !important; }
+  .registration-slip-page > div { width: 100% !important; max-width: none !important; }
   .registration-slip-page .registration-approval-slip {
-    position: absolute !important;
-    top: 0;
-    left: 0;
+    position: relative !important;
     box-sizing: border-box;
     display: block !important;
-    width: 194mm !important;
-    max-width: none !important;
-    min-height: 281mm;
-    margin: 0 !important;
+    width: 100% !important;
+    max-width: 194mm !important;
+    min-height: 0 !important;
+    margin: 0 auto !important;
+    padding: 6mm !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+  }
+  .registration-approval-slip header,
+  .registration-slip-meta,
+  .registration-slip-declaration,
+  .registration-approval-decision,
+  .registration-slip-footer,
+  .registration-applicant-fields > *,
+  .registration-slip-field {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  .registration-approval-slip > header { padding-bottom: 4mm !important; }
+  .registration-approval-slip > header h2 { font-size: 16pt !important; line-height: 1.15 !important; }
+  .registration-approval-slip > header h1 { margin-top: 3mm !important; font-size: 12pt !important; }
+  .registration-approval-slip .registration-slip-field { padding-top: 1.5mm !important; padding-bottom: 1.5mm !important; }
+  .registration-approval-slip .registration-applicant-details { margin-top: 4mm !important; }
+  .registration-approval-slip .registration-slip-declaration,
+  .registration-approval-slip .registration-approval-decision { margin-top: 4mm !important; }
+  .registration-approval-slip .registration-slip-footer { margin-top: 3mm !important; }
   .registration-slip-card { overflow: visible !important; border: 0 !important; box-shadow: none !important; }
 }
 

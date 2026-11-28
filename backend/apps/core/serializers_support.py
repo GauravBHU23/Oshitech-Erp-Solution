@@ -1,6 +1,28 @@
 from rest_framework import serializers
 
-from .models import SupportRequest
+from .models import SupportMessage, SupportRequest
+
+
+class LiveChatStartSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    message = serializers.CharField(min_length=1, max_length=4000, trim_whitespace=True)
+
+    def validate_phone(self, value):
+        from .validators import normalize_phone
+        return normalize_phone(value)
+
+
+class SupportMessageCreateSerializer(serializers.Serializer):
+    body = serializers.CharField(min_length=1, max_length=4000, trim_whitespace=True)
+
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupportMessage
+        fields = ["id", "sender_type", "sender_name", "body", "created_at"]
+        read_only_fields = fields
 
 
 class SupportRequestCreateSerializer(serializers.Serializer):

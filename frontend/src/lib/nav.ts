@@ -105,7 +105,7 @@ export function navFor(role: Role): NavItem[] {
     case "exam_controller":
       return [dash, m("exams", "Exams"), m("schedules", "Exam Schedule"), cards, m("results", "Results"), marksEntry, reportCards, m("students", "Students"), idCards, notices, weekly, leaves, profile, passwordReset];
     case "stre_admin":
-      return [dash, { href: "/stre-admin/registrations", label: "STRE Registrations" }, { href: "/stre-admin/results", label: "Results & Merit" }, { href: "/stre-admin/support", label: "STRE Support" }, m("stre-notices", "STRE Notices"), m("stre-exams", "Exams & Fees"), m("stre-subjects", "STRE Subjects"), profile, passwordReset];
+      return [dash, { href: "/stre-admin/registrations", label: "STRE Registrations" }, { href: "/stre-admin/results", label: "Results & Merit" }, { href: "/stre-admin/support", label: "STRE Support" }, m("stre-notices", "STRE Notices"), m("stre-exams", "Exams & Fees"), m("stre-exam-slots", "Exam Slots"), m("stre-subjects", "STRE Subjects"), profile, passwordReset];
     case "student":
       return [dash, m("students", "Student record"), myIdCard, myAttendance, myTimetable, homework, notices, myFees, { href: "/manage/leave-requests", label: "Leave Applications" }, m("teacher-feedback", "Rate Teachers"), m("exams", "Exams"), m("schedules", "Exam Schedule"), cards, m("results", "My Results"), myReportCard, profile, passwordReset];
   }
@@ -154,7 +154,7 @@ export function navGroupsFor(role: Role): { dashboard: NavItem; groups: NavGroup
   }
   if (role === "stre_admin") {
     return { dashboard, groups: [
-      group("Talent Exam (STRE)", "award", ["STRE Registrations", "Results & Merit", "STRE Support", "STRE Notices", "Exams & Fees", "STRE Subjects"]),
+      group("Talent Exam (STRE)", "award", ["STRE Registrations", "Results & Merit", "STRE Support", "STRE Notices", "Exams & Fees", "Exam Slots", "STRE Subjects"]),
       group("My Account", "settings", ["My Profile", "Password Reset"]),
     ] };
   }

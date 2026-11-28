@@ -6,6 +6,8 @@ from decimal import Decimal
 from django.db import models
 from django.utils import timezone
 
+from apps.core.demographics import CASTE_CATEGORY_CHOICES, STATE_CHOICES
+
 
 def _upload(instance, filename, kind):
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "jpg").lower()[:5]
@@ -55,6 +57,25 @@ class StreExam(models.Model):
         return self.registration_open and self.last_date >= timezone.localdate()
 
 
+class StreExamSlot(models.Model):
+    """Ek exam ke multiple time-slots (e.g. Slot 1: 10 AM, Slot 2: 2 PM). Candidate registration
+    ke time ek slot choose karta hai."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    exam = models.ForeignKey(StreExam, on_delete=models.CASCADE, related_name="slots")
+    label = models.CharField(max_length=60, help_text="e.g. Slot 1")
+    reporting_time = models.TimeField(null=True, blank=True)
+    slot_time = models.CharField(max_length=60, blank=True, help_text="e.g. 10:00 AM – 12:00 PM")
+    venue = models.TextField(blank=True, help_text="Leave blank to use the exam's main venue")
+    is_active = models.BooleanField(default=True, help_text="Show this slot to candidates during registration")
+
+    class Meta:
+        ordering = ["label"]
+
+    def __str__(self):
+        return f"{self.exam.code} — {self.label}"
+
+
 class StreSubject(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
@@ -77,8 +98,11 @@ CLASS_LEVEL_CHOICES = [(str(n), f"Class {n}") for n in range(1, 13)] + [
     ("pg", "Post-Graduation"),
 ]
 COLLEGE_LEVELS = {"11", "12", "grad", "pg"}
-
-
+GENDER_CHOICES = [
+    ("male", "Male"),
+    ("female", "Female"),
+    ("other", "Other"),
+]
 def class_level_label(value):
     return dict(CLASS_LEVEL_CHOICES).get(value, "")
 
@@ -93,6 +117,7 @@ class StreRegistration(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     exam = models.ForeignKey(StreExam, on_delete=models.PROTECT, related_name="registrations")
+    slot = models.ForeignKey(StreExamSlot, on_delete=models.SET_NULL, null=True, blank=True, related_name="registrations")
     registration_no = models.CharField(max_length=30, unique=True, editable=False)
     access_token = models.CharField(max_length=64, unique=True, default=_token, editable=False)
 
@@ -101,6 +126,9 @@ class StreRegistration(models.Model):
     email = models.EmailField()
     mobile = models.CharField(max_length=10)
     father_name = models.CharField(max_length=150)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, default="")
+    caste_category = models.CharField(max_length=10, choices=CASTE_CATEGORY_CHOICES, blank=True, default="")
+    state_code = models.CharField(max_length=2, choices=STATE_CHOICES, blank=True, default="")
     school_name = models.CharField(max_length=200, blank=True, help_text="School, or college/university for Class 11+ candidates")
     class_level = models.CharField(max_length=4, blank=True, choices=CLASS_LEVEL_CHOICES)
     address = models.TextField(max_length=500, blank=True)

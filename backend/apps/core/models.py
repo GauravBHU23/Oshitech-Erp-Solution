@@ -95,9 +95,33 @@ class SupportRequest(BaseModel):
     subject = models.CharField(max_length=160)
     message = models.TextField(max_length=4000)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    chat_token_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.get_category_display()}: {self.subject}"
+
+
+class SupportMessage(BaseModel):
+    class SenderType(models.TextChoices):
+        VISITOR = "visitor", "Visitor"
+        STAFF = "staff", "Staff"
+
+    conversation = models.ForeignKey(
+        SupportRequest, on_delete=models.CASCADE, related_name="messages"
+    )
+    sender_type = models.CharField(max_length=10, choices=SenderType.choices)
+    sender_name = models.CharField(max_length=150)
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="support_messages",
+    )
+    body = models.TextField(max_length=4000)
+
+    class Meta:
+        ordering = ["created_at", "id"]

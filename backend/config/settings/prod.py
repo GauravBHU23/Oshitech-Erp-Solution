@@ -34,6 +34,8 @@ if not ADMIN_URL.endswith("/") or ADMIN_URL.startswith("/"):  # noqa: F405
 site = urlsplit(SITE_URL)  # noqa: F405
 if site.scheme != "https" or not site.netloc or site.netloc in {"your-domain.com", "localhost:3000"}:
     raise ImproperlyConfigured("Production SITE_URL ko apne public HTTPS domain par set karein.")
+if TURNSTILE_SECRET_KEY == "1x0000000000000000000000000000000AA":  # noqa: F405
+    raise ImproperlyConfigured("Production TURNSTILE_SECRET_KEY ko apni real Cloudflare secret key se set karein.")
 
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

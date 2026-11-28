@@ -159,13 +159,15 @@ def create_admit_card_pdf(registration, site_url):
     pdf.drawString(margin + 9, y - 13, "EXAM SCHEDULE")
     y -= 28
 
+    slot = registration.slot
     exam_date = exam.exam_date.strftime("%d %b %Y")
-    reporting = exam.reporting_time.strftime("%I:%M %p") if exam.reporting_time else "—"
+    reporting_time = (slot.reporting_time if slot else None) or exam.reporting_time
+    reporting = reporting_time.strftime("%I:%M %p") if reporting_time else "—"
     schedule = [
         ("EXAM DATE", exam_date),
-        ("EXAM TIME", exam.exam_time or "—"),
+        ("EXAM TIME", (slot.slot_time if slot else "") or exam.exam_time or "—"),
         ("REPORTING TIME", reporting),
-        ("EXAM CODE", exam.code),
+        ("EXAM CODE", f"{exam.code} ({slot.label})" if slot else exam.code),
     ]
     cell_gap = 8
     cell_width = (content_width - 3 * cell_gap) / 4

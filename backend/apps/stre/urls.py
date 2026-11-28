@@ -5,6 +5,7 @@ from . import results, views
 
 router = DefaultRouter()
 router.register("admin/exams", views.StreExamViewSet, basename="stre-exam")
+router.register("admin/exam-slots", views.StreExamSlotViewSet, basename="stre-exam-slot")
 router.register("admin/subjects", views.StreSubjectViewSet, basename="stre-subject")
 router.register("admin/registrations", views.StreRegistrationAdminViewSet, basename="stre-registration")
 router.register("admin/email-logs", views.StreEmailLogViewSet, basename="stre-email-log")

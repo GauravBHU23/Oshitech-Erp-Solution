@@ -109,6 +109,21 @@ def _validate_password(password, user, field_name):
         raise ValidationError({field_name: exc.messages}) from exc
 
 
+def _next_student_roll_no(school_id, class_level):
+    used = set()
+    for value in Student.objects.filter(
+        school_id=school_id,
+        class_level=class_level,
+    ).values_list("roll_no", flat=True):
+        value = str(value).strip()
+        if value.isdecimal() and int(value) > 0:
+            used.add(int(value))
+    number = 1
+    while number in used:
+        number += 1
+    return str(number)
+
+
 def _revoke_user_refresh_tokens(user):
     revoke_user_sessions(user.pk)
     tokens = list(OutstandingToken.objects.filter(user=user))
@@ -138,15 +153,19 @@ class LoginView(APIView):
         enforce_csrf(request)
         s = LoginSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        # CAPTCHA verification runs before looking up the account or checking
+        # Captcha + Turnstile verification runs before looking up the account or checking
         # the password, so every login attempt follows the same challenge.
-        captcha_security.check_captcha(
-            s.validated_data["captcha_id"], s.validated_data["captcha"]
+        captcha_security.check_captcha_and_turnstile(
+            s.validated_data["captcha_id"], s.validated_data["captcha"],
+            s.validated_data["turnstile_token"], request.META.get("REMOTE_ADDR"),
         )
         email = s.validated_data["email"].lower()
         password = s.validated_data["password"]
+        portal_role = s.validated_data.get("portal_role")
 
         existing = User.objects.filter(email=email).select_related("school").first()
+        if existing and portal_role and existing.role != portal_role:
+            return Response({"detail": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
         if existing and existing.is_locked:
             return Response(
                 {"detail": "This account is temporarily locked. Please try again later."},
@@ -176,8 +195,14 @@ class LoginView(APIView):
                 pending = RegistrationRequest.objects.filter(
                     email__iexact=email,
                     status=RegistrationRequest.Status.PENDING,
-                ).only("password_hash").first()
-                if pending and pending.password_hash and check_password(password, pending.password_hash):
+                ).only("password_hash", "role").first()
+                if (
+                    pending
+                    and pending.password_hash
+                    and check_password(password, pending.password_hash)
+                ):
+                    if portal_role and pending.role != portal_role:
+                        return Response({"detail": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
                     return Response(
                         {"detail": "Your registration is waiting for school admin approval. You can sign in after your school approves it."},
                         status=status.HTTP_403_FORBIDDEN,
@@ -588,6 +613,10 @@ class RegistrationCreateView(APIView):
     parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
 
     def post(self, request):
+        captcha_security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         serializer = RegistrationRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         application = serializer.save()
@@ -620,8 +649,17 @@ class RegistrationRequestViewSet(viewsets.ModelViewSet):
         if application.status != RegistrationRequest.Status.PENDING:
             raise ValidationError("This registration has already been reviewed.")
         details = application.details
+        generated_roll_no = None
         try:
             with transaction.atomic():
+                if application.role == Role.STUDENT:
+                    # Serialize admissions for the same school so two simultaneous
+                    # approvals cannot allocate the same class roll number.
+                    School.objects.select_for_update().get(pk=application.school_id)
+                    generated_roll_no = _next_student_roll_no(
+                        application.school_id,
+                        details["class_level"],
+                    )
                 user = User(email=application.email, first_name=application.first_name, last_name=application.last_name, phone=application.phone, role=application.role, school=application.school, is_active=False)
                 user.password = application.password_hash
                 user.save()
@@ -630,7 +668,7 @@ class RegistrationRequestViewSet(viewsets.ModelViewSet):
                     user.profile_photo = ContentFile(application.profile_photo.read(), name=application.profile_photo.name.rsplit("/", 1)[-1])
                     user.save(update_fields=["profile_photo"])
                 if application.role == Role.STUDENT:
-                    Student.objects.create(school=application.school, user=user, admission_no=f"REG-{str(application.pk)[:8].upper()}", class_level=details["class_level"], date_of_birth=details["date_of_birth"], gender=details.get("gender", ""), father_name=details.get("father_name") or details.get("guardian_name", ""), mother_name=details.get("mother_name", ""), guardian_phone=details["guardian_phone"], address=details["address"], is_active=False)
+                    Student.objects.create(school=application.school, user=user, admission_no=f"REG-{str(application.pk)[:8].upper()}", roll_no=generated_roll_no, class_level=details["class_level"], date_of_birth=details["date_of_birth"], gender=details.get("gender", ""), caste_category=details.get("caste_category", ""), state_code=details.get("state_code", ""), father_name=details.get("father_name") or details.get("guardian_name", ""), mother_name=details.get("mother_name", ""), guardian_phone=details["guardian_phone"], address=details["address"], is_active=False)
                 else:
                     Teacher.objects.create(school=application.school, user=user, employee_id=f"REG-{str(application.pk)[:8].upper()}", phone=application.phone, qualification=details["qualification"], is_active=False)
                 # Keep Aadhaar only while an application is pending review.
@@ -645,7 +683,9 @@ class RegistrationRequestViewSet(viewsets.ModelViewSet):
                     application.profile_photo.delete(save=True)
         except IntegrityError as exc:
             raise ValidationError("An account or profile already exists. Contact your school administrator.") from exc
-        log_action(request, "registration_approved", application, {"role": application.role, "email": application.email})
+        log_action(request, "registration_approved", application, {"role": application.role, "email": application.email, "roll_no": generated_roll_no})
+        if generated_roll_no is not None:
+            return Response({"detail": f"Registration approved. Student roll number {generated_roll_no} was generated automatically. Assign a class to activate the profile.", "roll_no": generated_roll_no})
         return Response({"detail": "Registration approved. Assign a class or teaching responsibilities to activate the profile."})
 
     @action(detail=True, methods=["post"])

@@ -21,8 +21,8 @@ from apps.core.roles import Role
 from apps.core.tests import PW, User, make_school
 
 from . import security
-from .models import StreCaptcha, StreEmailLog, StreExam, StreRegistration, StreSubject
-from .security import make_email_token
+from .models import StreCaptcha, StreEmailLog, StreExam, StreExamSlot, StreRegistration, StreSubject
+from .security import TURNSTILE_TEST_TOKEN, make_email_token
 
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 MEDIA = tempfile.mkdtemp()
@@ -45,10 +45,12 @@ class StreBase(APITestCase):
     def form(self, **overrides):
         data = {
             "first_name": "Riya", "last_name": "Verma", "email": "riya@example.com", "mobile": "9876543210",
-            "father_name": "Mohan Verma", "class_level": "8", "school_name": "Kendriya Vidyalaya BHU", "address": "12 Lanka Road, Varanasi 221005",
+            "father_name": "Mohan Verma", "gender": "female", "caste_category": "obc", "state_code": "9",
+            "class_level": "8", "school_name": "Kendriya Vidyalaya BHU", "address": "12 Lanka Road, Varanasi 221005",
             "subject": "Mathematics", "subject_interest": "Algebra",
             "interests": ["Game Development", "Chess"], "aim_of_life": "To become a scientist",
             "aadhaar_number": "123456789012", "photo": image(), "signature": image("sign.png"),
+            **self.captcha(),
         }
         data.update(overrides)
         if "email_token" not in overrides:  # email OTP se verified hone ka saboot
@@ -56,13 +58,13 @@ class StreBase(APITestCase):
         return data
 
     def captcha(self):
-        """Test captcha jiska jawab pata hai."""
+        """Text captcha jiska jawab pata hai + Turnstile test token — dono layers."""
         c = StreCaptcha.objects.create(answer_hash=security._hash("AC2EK"), expires_at=timezone.now() + datetime.timedelta(minutes=5))
-        return {"captcha_id": str(c.pk), "captcha": "AC2EK"}
+        return {"captcha_id": str(c.pk), "captcha": "AC2EK", "turnstile_token": TURNSTILE_TEST_TOKEN}
 
     def admit(self, token):
         c = self.captcha()
-        return self.client.get(f"/api/v1/stre/admit-card/{token}/?captcha_id={c['captcha_id']}&captcha={c['captcha']}")
+        return self.client.get(f"/api/v1/stre/admit-card/{token}/?captcha_id={c['captcha_id']}&captcha={c['captcha']}&turnstile_token={c['turnstile_token']}")
 
     def register(self, **overrides):
         return self.client.post("/api/v1/stre/register/", self.form(**overrides), format="multipart")
@@ -79,6 +81,9 @@ class StrePublicTests(StreBase):
         self.assertEqual(res.data["registration_no"], "STRE26-000001")
         self.assertEqual(res.data["status"], "payment_pending")
         reg = StreRegistration.objects.get()
+        self.assertEqual(reg.gender, "female")
+        self.assertEqual(reg.caste_category, "obc")
+        self.assertEqual(reg.state_code, "9")
         self.assertEqual(reg.interests, ["Game Development", "Chess"])
         self.assertEqual(reg.aadhaar_last4, "9012")
         self.assertNotIn("123456789012", reg.aadhaar_encrypted)
@@ -126,6 +131,13 @@ class StrePublicTests(StreBase):
         self.assertEqual(bad.status_code, 400)
         for field in ("mobile", "first_name", "aadhaar_number", "interests", "signature"):
             self.assertIn(field, bad.data)
+
+    def test_registration_rejects_invalid_demographic_choices(self):
+        for field, value in (("gender", "invalid"), ("caste_category", "invalid"), ("state_code", "99")):
+            with self.subTest(field=field):
+                response = self.register(**{field: value})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.data)
 
     def test_duplicate_email_or_mobile_blocked(self):
         self.register()
@@ -246,6 +258,55 @@ class StreFlowTests(StreBase):
         sig = hmac.new(b"secret123", b"order_ABC|pay_1", hashlib.sha256).hexdigest()
         ok = self.client.post("/api/v1/stre/pay/verify/", {"token": token, "razorpay_order_id": "order_ABC", "razorpay_payment_id": "pay_1", "razorpay_signature": sig})
         self.assertEqual(ok.data["status"], "paid")
+
+
+class StreExamSlotTests(StreBase):
+    def test_slot_required_when_exam_has_active_slots(self):
+        slot = StreExamSlot.objects.create(exam=self.exam, label="Slot 1", slot_time="10:00 AM – 12:00 PM")
+        StreExamSlot.objects.create(exam=self.exam, label="Slot 2", slot_time="2:00 PM – 4:00 PM")
+
+        without_slot = self.register()
+        self.assertEqual(without_slot.status_code, 400)
+        self.assertIn("slot", without_slot.data)
+
+        with_slot = self.register(slot=str(slot.pk))
+        self.assertEqual(with_slot.status_code, 201)
+        self.assertEqual(with_slot.data["slot_label"], "Slot 1")
+        self.assertEqual(with_slot.data["slot_time"], "10:00 AM – 12:00 PM")
+
+    def test_slot_from_another_exam_rejected(self):
+        other_exam = StreExam.objects.create(code="STRE27", exam_date=self.exam.exam_date, last_date=self.exam.last_date, fee=0)
+        other_slot = StreExamSlot.objects.create(exam=other_exam, label="Slot 1")
+        StreExamSlot.objects.create(exam=self.exam, label="Slot 1")
+
+        res = self.register(slot=str(other_slot.pk))
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("slot", res.data)
+
+    def test_inactive_slot_not_selectable(self):
+        slot = StreExamSlot.objects.create(exam=self.exam, label="Slot 1", is_active=False)
+        res = self.register(slot=str(slot.pk))
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("slot", res.data)
+
+    def test_no_slot_needed_when_exam_has_none(self):
+        res = self.register()
+        self.assertEqual(res.status_code, 201)
+
+    def test_admit_card_uses_slot_time_over_exam_time(self):
+        slot = StreExamSlot.objects.create(exam=self.exam, label="Slot 1", slot_time="9:00 AM – 11:00 AM", venue="Room 4")
+        registration = self.register(slot=str(slot.pk)).data
+        reg = StreRegistration.objects.get()
+        self.client.force_authenticate(self.stre_admin)
+        self.client.post(f"/api/v1/stre/admin/registrations/{reg.id}/mark-paid/", {})
+        self.client.post(f"/api/v1/stre/admin/registrations/{reg.id}/issue-admit-card/", {"send": "false"})
+        self.client.force_authenticate(None)
+
+        card = self.admit(registration["access_token"])
+        self.assertEqual(card.status_code, 200)
+        self.assertEqual(card.data["exam"]["exam_time"], "9:00 AM – 11:00 AM")
+        self.assertEqual(card.data["exam"]["venue"], "Room 4")
+        self.assertEqual(card.data["slot_label"], "Slot 1")
 
 
 class StreAccessTests(StreBase):
@@ -616,13 +677,31 @@ class StreAdminEditTests(StreBase):
         self.register()
         reg = StreRegistration.objects.get()
         self.client.force_authenticate(self.stre_admin)
-        res = self.client.patch(f"/api/v1/stre/admin/registrations/{reg.id}/", {"first_name": "Riyaa", "mobile": "+91 91234 56780", "father_name": "Mohan Lal Verma", "interests": ["Robotics"]}, format="json")
+        res = self.client.patch(f"/api/v1/stre/admin/registrations/{reg.id}/", {
+            "first_name": "Riyaa", "mobile": "+91 91234 56780", "father_name": "Mohan Lal Verma",
+            "gender": "other", "caste_category": "gen_ews", "state_code": "28", "interests": ["Robotics"],
+        }, format="json")
         self.assertEqual(res.status_code, 200, res.data)
-        self.assertEqual(sorted(res.data["changed_fields"]), ["father_name", "first_name", "interests", "mobile"])
+        self.assertEqual(sorted(res.data["changed_fields"]), ["caste_category", "father_name", "first_name", "gender", "interests", "mobile", "state_code"])
         reg.refresh_from_db()
         self.assertEqual((reg.first_name, reg.mobile, reg.interests), ("Riyaa", "9123456780", ["Robotics"]))
+        self.assertEqual((reg.gender, reg.caste_category, reg.state_code), ("other", "gen_ews", "28"))
         from apps.core.models import AuditLog
         self.assertTrue(AuditLog.objects.filter(action="stre_registration_edited").exists())
+
+    def test_admin_can_save_legacy_registration_with_blank_demographics(self):
+        self.register()
+        reg = StreRegistration.objects.get()
+        StreRegistration.objects.filter(pk=reg.pk).update(gender="", caste_category="", state_code="")
+        self.client.force_authenticate(self.stre_admin)
+
+        response = self.client.patch(
+            f"/api/v1/stre/admin/registrations/{reg.id}/",
+            {"gender": "", "caste_category": "", "state_code": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
 
     def test_validation_and_duplicates(self):
         self.register()
@@ -665,11 +744,11 @@ class StreSupportNoticeDeleteTests(StreBase):
     def test_candidate_raises_support_and_admin_replies(self):
         reg_no = self.register().data["registration_no"]
         mail.outbox.clear()
-        bad = self.client.post("/api/v1/stre/support/", {"name": "R", "email": "x", "mobile": "12", "category": "correction", "subject": "a", "message": "short"})
+        bad = self.client.post("/api/v1/stre/support/", {"name": "R", "email": "x", "mobile": "12", "category": "correction", "subject": "a", "message": "short", **self.captcha()})
         self.assertEqual(bad.status_code, 400)
         for f in ("name", "email", "mobile", "subject", "message"):
             self.assertIn(f, bad.data)
-        res = self.client.post("/api/v1/stre/support/", {"name": "Riya Verma", "email": "riya@example.com", "mobile": "9876543210", "registration_no": reg_no.lower(), "category": "correction", "subject": "Wrong father name", "message": "My father's name is spelled wrong, please correct it."})
+        res = self.client.post("/api/v1/stre/support/", {"name": "Riya Verma", "email": "riya@example.com", "mobile": "9876543210", "registration_no": reg_no.lower(), "category": "correction", "subject": "Wrong father name", "message": "My father's name is spelled wrong, please correct it.", **self.captcha()})
         self.assertEqual(res.status_code, 201, res.data)
         self.assertTrue(res.data["ticket_no"].startswith("STRE-T"))
         self.assertIn("received", mail.outbox[-1].subject)
@@ -735,14 +814,14 @@ class StreOtpCaptchaTests(StreBase):
 
     def test_otp_flow(self):
         mail.outbox.clear()
-        res = self.client.post("/api/v1/stre/otp/send/", {"email": "Riya@Example.com"})
+        res = self.client.post("/api/v1/stre/otp/send/", {"email": "Riya@Example.com", **self.captcha()})
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(len(mail.outbox), 1)
         code_match = re.search(r"\b(\d{6})\b", mail.outbox[0].subject)
         self.assertIsNotNone(code_match)
         code = code_match.group(1)
         # turant dobara nahi
-        self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com", **self.captcha()}).status_code, 400)
         wrong = self.client.post("/api/v1/stre/otp/verify/", {"email": "riya@example.com", "code": "000000" if code != "000000" else "111111"})
         self.assertIn("attempt", str(wrong.data["code"]))
         ok = self.client.post("/api/v1/stre/otp/verify/", {"email": "riya@example.com", "code": code})
@@ -750,20 +829,20 @@ class StreOtpCaptchaTests(StreBase):
         res = self.register(email_token=ok.data["email_token"])
         self.assertEqual(res.status_code, 201, res.data)
         # registered email par dobara OTP nahi
-        self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/v1/stre/otp/send/", {"email": "riya@example.com", **self.captcha()}).status_code, 400)
 
     def test_otp_send_has_its_own_tight_throttle(self):
         """OTP-send gets its own scope (stre_otp_send, 5/hour) separate from the general
         `stre` scope (150/hour) — a bot spraying OTP requests across many emails must not
         be able to use the generous general budget to email-bomb."""
         for i in range(5):
-            res = self.client.post("/api/v1/stre/otp/send/", {"email": f"flood{i}@example.com"})
+            res = self.client.post("/api/v1/stre/otp/send/", {"email": f"flood{i}@example.com", **self.captcha()})
             self.assertEqual(res.status_code, 200, res.data)
-        res = self.client.post("/api/v1/stre/otp/send/", {"email": "flood5@example.com"})
+        res = self.client.post("/api/v1/stre/otp/send/", {"email": "flood5@example.com", **self.captcha()})
         self.assertEqual(res.status_code, 429, res.data)
 
     def test_too_many_wrong_otp(self):
-        self.client.post("/api/v1/stre/otp/send/", {"email": "x@example.com"})
+        self.client.post("/api/v1/stre/otp/send/", {"email": "x@example.com", **self.captcha()})
         code = re.search(r"\b(\d{6})\b", mail.outbox[-1].subject).group(1)
         bad = "000000" if code != "000000" else "111111"
         for _ in range(5):
@@ -779,9 +858,10 @@ class StreOtpCaptchaTests(StreBase):
         body = {"registration_no": reg_no, "mobile": "9876543210"}
         self.assertIn("captcha", self.client.post("/api/v1/stre/status/", body).data)
         c = self.captcha()
-        self.assertIn("captcha", self.client.post("/api/v1/stre/status/", {**body, "captcha_id": c["captcha_id"], "captcha": "WRONG"}).data)
+        self.assertIn("captcha", self.client.post("/api/v1/stre/status/", {**body, "captcha_id": c["captcha_id"], "captcha": "WRONG", "turnstile_token": c["turnstile_token"]}).data)
         # wahi captcha dobara nahi chalta
         self.assertIn("captcha", self.client.post("/api/v1/stre/status/", {**body, **c}).data)
+        self.assertIn("captcha", self.client.post("/api/v1/stre/status/", {**body, **self.captcha(), "turnstile_token": "wrong-token"}).data)
         self.assertEqual(self.client.post("/api/v1/stre/status/", {**body, **self.captcha()}).status_code, 200)
 
     def test_admit_card_email_has_ticket_and_photo(self):

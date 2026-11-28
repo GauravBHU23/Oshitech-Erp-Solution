@@ -2,6 +2,7 @@ import { api } from "./api";
 import type { Role, Row, User } from "./types";
 import { createElement, type ReactNode } from "react";
 import NoticeNewBadge from "../components/NoticeNewBadge";
+import { STRE_CASTE_CATEGORIES, STRE_STATES, streCasteCategoryLabel, streStateLabel } from "./stre";
 
 const AUDIT_FIELD_LABELS: Record<string, string> = {
   first_name: "First name",
@@ -128,6 +129,7 @@ const TEACHERS = "/teachers/";
 const STUDENTS = "/students/";
 const EXAMS = "/exams/exams/";
 const ASSIGNMENTS = "/academics/teaching-assignments/";
+const STRE_EXAMS = "/stre/admin/exams/";
 
 const yn = (v: unknown) => (v ? "Yes" : "No");
 const person = (row: Row) => {
@@ -219,6 +221,7 @@ const list: Resource[] = [
           { name: "first_name", label: "First name", required: true },
           { name: "last_name", label: "Last name" },
           { name: "email", label: "Email", type: "email", required: true },
+          { name: "phone", label: "Phone number", required: true },
           { name: "profile_photo", label: "Profile photo (JPG, PNG, GIF or WebP; max 5 MB)", type: "file" },
           { name: "password", label: "Password (min 10 chars)", type: "password", required: true },
         ],
@@ -374,6 +377,8 @@ const list: Resource[] = [
       { key: "class_level", label: "Class", render: (r) => classLabel(r.class_level) },
       { key: "classroom", label: "Section", render: (r) => r.classroom_name || statusPill("Not placed", "amber") },
       { key: "roll_no", label: "Roll", render: (r) => r.roll_no || "—" },
+      { key: "caste_category", label: "Caste", render: (r) => streCasteCategoryLabel(r.caste_category) || "—" },
+      { key: "state_code", label: "State", render: (r) => streStateLabel(r.state_code) || "—" },
       { key: "father_name", label: "Father / Mother", render: (r) => createElement("span", null, createElement("span", { className: "block" }, r.father_name || "—"), createElement("span", { className: "block text-xs text-slate-500" }, r.mother_name || "—")) },
       { key: "guardian_phone", label: "Parent phone", render: (r) => r.guardian_phone || "—" },
       { key: "is_active", label: "Status", render: activePill },
@@ -396,6 +401,8 @@ const list: Resource[] = [
         ],
       },
       { name: "blood_group", label: "Blood group (printed on ID card)", type: "select", options: BLOOD_GROUPS },
+      { name: "caste_category", label: "Caste category", type: "select", options: STRE_CASTE_CATEGORIES.map((item) => ({ value: item.value, label: item.label })) },
+      { name: "state_code", label: "State", type: "select", options: STRE_STATES.map((item) => ({ value: item.code, label: item.name })) },
       { name: "father_name", label: "Father's name", required: true, optionalOnEdit: true },
       { name: "mother_name", label: "Mother's name", required: true, optionalOnEdit: true },
       { name: "guardian_phone", label: "Parent phone" },
@@ -799,6 +806,30 @@ const list: Resource[] = [
       { name: "total_marks", label: "Total marks (for result)", type: "number", default: "100" },
       { name: "merit_count", label: "Top ranks that get a Certificate of Merit", type: "number", default: "10" },
       { name: "registration_open", label: "Registration open", type: "checkbox", default: true },
+    ],
+  },
+  {
+    key: "stre-exam-slots",
+    title: "STRE Exam Slots",
+    endpoint: "/stre/admin/exam-slots/",
+    platform: true,
+    writeRoles: ["stre_admin"],
+    canDelete: true,
+    filters: [{ param: "exam", label: "Exam", from: STRE_EXAMS }],
+    columns: [
+      { key: "exam", label: "Exam", fk: STRE_EXAMS },
+      { key: "label", label: "Slot" },
+      { key: "slot_time", label: "Slot time", render: (r) => r.slot_time || "—" },
+      { key: "reporting_time", label: "Reporting time", render: (r) => r.reporting_time || "—" },
+      { key: "is_active", label: "Shown at registration", render: activePill },
+    ],
+    fields: [
+      { name: "exam", label: "Exam", type: "select", required: true, from: STRE_EXAMS },
+      { name: "label", label: "Slot label (e.g. Slot 1)", required: true },
+      { name: "slot_time", label: "Slot time (e.g. 10:00 AM – 12:00 PM)" },
+      { name: "reporting_time", label: "Reporting time", type: "time" },
+      { name: "venue", label: "Venue (leave blank to use the exam's main venue)", type: "textarea" },
+      { name: "is_active", label: "Show this slot at registration", type: "checkbox", default: true },
     ],
   },
   {

@@ -19,6 +19,32 @@ class NoStoreApiMiddleware:
         return response
 
 
+class AdminSecurityHeadersMiddleware:
+    """Content-Security-Policy for Django admin's HTML pages only — the rest of the
+    API returns JSON and has no inline scripts/styles to restrict."""
+
+    CSP = (
+        "default-src 'self'; "
+        "script-src 'self' https://challenges.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "frame-src https://challenges.cloudflare.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith(f"/{settings.ADMIN_URL}"):
+            response.setdefault("Content-Security-Policy", self.CSP)
+            response.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        return response
+
+
 class AdminSessionTimeoutMiddleware:
     """Enforce idle and absolute expiry for Django's separate admin session."""
 

@@ -25,4 +25,27 @@ describe("API requests", () => {
       })
     );
   });
+
+  it("preserves caller-supplied headers", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "[]",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api("/live-chat/conversation/messages/", {
+      headers: { "X-Chat-Token": "visitor-token" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/live-chat/conversation/messages/",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Chat-Token": "visitor-token",
+          "ngrok-skip-browser-warning": "true",
+        }),
+      })
+    );
+  });
 });

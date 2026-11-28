@@ -85,6 +85,7 @@ MIDDLEWARE = [
     "apps.core.middleware.AdminSessionTimeoutMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.AdminSecurityHeadersMiddleware",
 ]
 if ENABLE_SILK:
     MIDDLEWARE.insert(1, "silk.middleware.SilkyMiddleware")
@@ -169,6 +170,7 @@ REST_FRAMEWORK = {
         "login": "10/min",
         "verify": "30/min",
         "support": "10/hour",
+        "live_chat_message": "30/min",
         "admin_email": "10/hour",
         "stre": "150/hour",
         "stre_webhook": "600/hour",
@@ -335,3 +337,9 @@ CASHFREE_SECRET_KEY = env("CASHFREE_SECRET_KEY", "")
 CASHFREE_ENV = env("CASHFREE_ENV", "")  # production / sandbox (khali = secret key se pata lagao)
 CASHFREE_NOTIFY_URL = env("CASHFREE_NOTIFY_URL", "")  # https://<backend-domain>/api/v1/stre/pay/cashfree-webhook/
 STRE_PAYEE_NAME = env("STRE_PAYEE_NAME", "STRE Exam Cell")
+
+# Cloudflare Turnstile ("I'm not a robot" check). Default values are Cloudflare's
+# published always-pass test keys for local dev; set real keys in .env for production.
+# https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")

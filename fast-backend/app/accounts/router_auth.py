@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.accounts import service
-from app.accounts.schemas import CaptchaOut, LoginIn, LoginOut, MeOut, PasswordChangeIn, SessionInfoOut, UserOut
+from app.accounts.schemas import LoginIn, LoginOut, MeOut, PasswordChangeIn, SessionInfoOut, UserOut
 from app.config import Settings, get_settings
 from app.core.deps import AuthenticatedUser, get_current_user, get_db_session
 from app.core.errors import ApiError
 from app.core.security import csrf
-from app.core.security.captcha import CaptchaError, check_captcha, new_captcha
+from app.core.security.captcha import CaptchaError, check_turnstile
 from app.core.security.jwt import TokenError, auth_time_expired, decode_token
 from app.core.security.password_validation import validate_password_strength
 from app.core.security.passwords import hash_password, verify_password
@@ -50,12 +50,6 @@ async def csrf_cookie(response: Response, settings: Settings = Depends(get_setti
     return {"detail": "CSRF cookie set."}
 
 
-@router.get("/captcha/", response_model=CaptchaOut)
-async def login_captcha(db: AsyncSession = Depends(get_db_session)):
-    captcha_id, svg = await new_captcha(db)
-    return CaptchaOut(id=str(captcha_id), svg=svg)
-
-
 @router.post("/login/", response_model=LoginOut)
 async def login(
     payload: LoginIn,
@@ -65,10 +59,10 @@ async def login(
     settings: Settings = Depends(get_settings),
 ):
     _enforce_csrf_or_raise(request)
-    # CAPTCHA before any account lookup — every attempt faces the same challenge,
+    # Turnstile before any account lookup — every attempt faces the same challenge,
     # matching Django's LoginView ordering exactly.
     try:
-        await check_captcha(db, payload.captcha_id, payload.captcha)
+        await check_turnstile(payload.turnstile_token, request.client.host if request.client else None)
     except CaptchaError as exc:
         raise ApiError(status.HTTP_400_BAD_REQUEST, {"captcha": [str(exc)]})
 

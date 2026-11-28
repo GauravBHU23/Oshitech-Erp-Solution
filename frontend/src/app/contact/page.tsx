@@ -9,6 +9,8 @@ import SiteHeader from "@/components/SiteHeader";
 import Spinner from "@/components/Spinner";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 const CATEGORIES = [
   ["admission", "Admission enquiry"],
@@ -33,6 +35,9 @@ export default function ContactPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   useEffect(() => {
     if (user) setForm((f) => ({ ...f, email: user.email, name: `${user.first_name} ${user.last_name}`.trim() }));
@@ -42,16 +47,20 @@ export default function ContactPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!user && captcha.captcha.length !== 5) { setError("Type the 5 characters shown in the image."); return; }
+    if (!user && !turnstileToken) { setError("Please complete the verification check."); return; }
     setBusy(true);
     setError("");
     try {
-      const res = await api<{ id: string }>("/support-requests/", { method: "POST", body: form });
+      const res = await api<{ id: string }>("/support-requests/", { method: "POST", body: { ...form, ...captcha, turnstile_token: turnstileToken } });
       setDone(res.id);
       toast.success("Message sent. The office will reply by email.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Unable to send your message. Please try again.");
     } finally {
       setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
     }
   };
 
@@ -119,6 +128,8 @@ export default function ContactPage() {
               </label>
               <label className="block text-sm sm:col-span-2"><span className="mb-1 block font-medium text-slate-600">Subject <span className="text-red-500">*</span></span><input className="input" required maxLength={160} value={form.subject} onChange={set("subject")} /></label>
               <label className="block text-sm sm:col-span-2"><span className="mb-1 block font-medium text-slate-600">Message <span className="text-red-500">*</span></span><textarea className="input" required minLength={10} maxLength={4000} rows={5} value={form.message} onChange={set("message")} /></label>
+              {!user && <div className="sm:col-span-2"><StreCaptcha value={captcha} onChange={setCaptcha} reloadKey={turnstileKey} /></div>}
+              {!user && <div className="sm:col-span-2"><TurnstileWidget token={turnstileToken} onChange={setTurnstileToken} reloadKey={turnstileKey} /></div>}
               {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 sm:col-span-2">{error}</div>}
               <div className="sm:col-span-2"><button className="btn-primary w-full !py-3 sm:w-auto" disabled={busy}>{busy ? <><Spinner className="mr-2" />Sending…</> : "Send message"}</button></div>
             </form>

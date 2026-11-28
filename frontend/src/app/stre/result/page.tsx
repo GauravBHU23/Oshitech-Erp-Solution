@@ -5,6 +5,7 @@ import { toast } from "@/lib/toast";
 import { cleanPhone, isValidPhone } from "@/lib/validation";
 import Icon from "@/components/Icon";
 import Spinner from "@/components/Spinner";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 import StreShell from "@/components/StreShell";
 import { useStreResultsOn } from "@/lib/streResults";
@@ -14,6 +15,7 @@ export default function StreResultPage() {
   const [roll, setRoll] = useState("");
   const [mobile, setMobile] = useState("");
   const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [captchaKey, setCaptchaKey] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -37,12 +39,13 @@ export default function StreResultPage() {
     if (!/^\d{6,12}$/.test(roll.trim())) e.roll_no = "Enter the roll number printed on your admit card.";
     if (!isValidPhone(mobile)) e.mobile = "Enter the 10-digit mobile number used while registering.";
     if (captcha.captcha.length !== 5) e.captcha = "Type the 5 characters shown in the image.";
+    else if (!turnstileToken) e.captcha = "Please complete the verification check.";
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
     setNotice("");
     try {
-      setResult(await api<StreResultData>("/stre/result/", { method: "POST", silent: true, body: { roll_no: roll.trim(), mobile: cleanPhone(mobile), ...captcha } }));
+      setResult(await api<StreResultData>("/stre/result/", { method: "POST", silent: true, body: { roll_no: roll.trim(), mobile: cleanPhone(mobile), ...captcha, turnstile_token: turnstileToken } }));
     } catch (err) {
       const msg = err instanceof ApiError ? err.message.replace(/^(detail|captcha):\s*/, "") : "Could not load the result.";
       setNotice(msg);
@@ -86,8 +89,8 @@ export default function StreResultPage() {
                 {errors.mobile && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.mobile}</span>}
               </label>
             </div>
-            <StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={captchaKey} />
-            {errors.captcha && <span role="alert" className="field-error block text-[11px] font-medium">{errors.captcha}</span>}
+            <StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={captchaKey} error={errors.captcha} />
+            <TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={captchaKey} />
             {notice && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
             <button className="btn-primary w-full !py-3 sm:w-auto" disabled={busy}>{busy ? <><Spinner className="mr-2" />Checking…</> : "View result"}</button>
           </form>

@@ -5,6 +5,8 @@ import { toast } from "@/lib/toast";
 import { PHONE_HINT, cleanPhone, fieldErrors, isValidPhone, nameError } from "@/lib/validation";
 import Icon from "@/components/Icon";
 import Spinner from "@/components/Spinner";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 const CATEGORIES = [
   ["correction", "Correction in my registration"],
@@ -20,6 +22,9 @@ export default function StreSupportBox({ defaults }: { defaults?: { name?: strin
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState("");
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   const set = (k: keyof typeof v, value: string) => { setV((s) => ({ ...s, [k]: value })); setErrors((e) => (e[k] ? { ...e, [k]: "" } : e)); };
 
@@ -31,10 +36,12 @@ export default function StreSupportBox({ defaults }: { defaults?: { name?: strin
     if (!isValidPhone(v.mobile)) e.mobile = PHONE_HINT;
     if (v.subject.trim().length < 3) e.subject = "Write a short subject.";
     if (v.message.trim().length < 10) e.message = "Describe the problem in at least 10 characters.";
+    if (captcha.captcha.length !== 5) e.captcha = "Type the 5 characters shown in the image.";
+    else if (!turnstileToken) e.captcha = "Please complete the verification check.";
     if (Object.keys(e).length) { setErrors(e); toast.error("Please correct the fields marked in red."); return; }
     setBusy(true);
     try {
-      const res = await api<{ ticket_no: string; detail: string }>("/stre/support/", { method: "POST", body: v, silent: true });
+      const res = await api<{ ticket_no: string; detail: string }>("/stre/support/", { method: "POST", body: { ...v, ...captcha, turnstile_token: turnstileToken }, silent: true });
       setDone(res.ticket_no);
       toast.success(res.detail);
     } catch (err) {
@@ -43,6 +50,8 @@ export default function StreSupportBox({ defaults }: { defaults?: { name?: strin
       toast.error(Object.keys(fe).length ? "Please correct the fields marked in red." : err instanceof ApiError ? err.message : "Could not send. Try again.");
     } finally {
       setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
     }
   };
 
@@ -83,6 +92,8 @@ export default function StreSupportBox({ defaults }: { defaults?: { name?: strin
             <textarea className="input mt-1.5" rows={4} maxLength={3000} placeholder="What is wrong and what should it be?" value={v.message} aria-invalid={errors.message ? true : undefined} onChange={(e) => set("message", e.target.value)} />
             {errors.message && <span role="alert" className="field-error mt-1 block text-[11px] font-medium">{errors.message}</span>}
           </label>
+          <div className="sm:col-span-2"><StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} error={errors.captcha} /></div>
+          <div className="sm:col-span-2"><TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} /></div>
           <div className="sm:col-span-2"><button className="btn-primary w-full sm:w-auto" disabled={busy}>{busy ? <><Spinner className="mr-2" />Sending…</> : "Send to exam cell"}</button></div>
         </form>
       ))}

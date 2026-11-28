@@ -98,6 +98,7 @@ describe("STRE exam portal admin is separate from school modules", () => {
   it.each([
     ["stre_admin", "/stre-admin/registrations", true],
     ["stre_admin", "/manage/stre-exams", true],
+    ["stre_admin", "/manage/stre-exam-slots", true],
     ["stre_admin", "/manage/students", false],
     ["stre_admin", "/manage/fee-invoices", false],
     ["stre_admin", "/attendance", false],

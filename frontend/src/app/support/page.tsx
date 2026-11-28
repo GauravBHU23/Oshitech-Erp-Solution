@@ -7,6 +7,8 @@ import Icon from "@/components/Icon";
 import ThemeToggle from "@/components/ThemeToggle";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
 
 const categories = [
   ["login", "Login problem"],
@@ -25,6 +27,9 @@ export default function SupportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ticketId, setTicketId] = useState("");
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   useEffect(() => {
     if (user) setEmail(user.email);
@@ -32,12 +37,14 @@ export default function SupportPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!user && captcha.captcha.length !== 5) { setError("Type the 5 characters shown in the image."); return; }
+    if (!user && !turnstileToken) { setError("Please complete the verification check."); return; }
     setBusy(true);
     setError("");
     try {
       const ticket = await api<{ id: string }>("/support-requests/", {
         method: "POST",
-        body: { email, category, subject, message },
+        body: { email, category, subject, message, ...captcha, turnstile_token: turnstileToken },
       });
       setTicketId(ticket.id);
       toast.success("Report submitted. An administrator will review it.");
@@ -45,6 +52,8 @@ export default function SupportPage() {
       setError(submitError instanceof ApiError ? submitError.message : "Unable to submit your report. Please try again.");
     } finally {
       setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
     }
   };
 
@@ -89,6 +98,8 @@ export default function SupportPage() {
               <textarea className="input mt-1.5 min-h-36" required minLength={10} maxLength={4000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Tell us what happened and which page you were using." />
             </label>
             <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-900">Do not include your password or other sensitive information.</p>
+            {!user && <StreCaptcha value={captcha} onChange={setCaptcha} reloadKey={turnstileKey} />}
+            {!user && <TurnstileWidget token={turnstileToken} onChange={setTurnstileToken} reloadKey={turnstileKey} />}
             {error && <p role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
             <button type="submit" className="btn-primary inline-flex w-full items-center justify-center !py-3" disabled={busy}>
               {busy ? "Sending…" : "Send report"}<Icon name="arrow" className="ml-2" size={16} />

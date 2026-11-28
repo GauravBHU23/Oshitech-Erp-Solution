@@ -238,6 +238,7 @@ def _photo_bytes(reg):
 
 def _admit_ticket_html(reg, has_photo):
     exam = reg.exam
+    slot = reg.slot
     font = "Segoe UI,Roboto,Arial,sans-serif"
     photo = (
         f"<img src='cid:candidate-photo' width='92' height='112' alt='Photo' style='display:block;margin:0 auto;width:92px;height:112px;object-fit:cover;border-radius:12px;border:3px solid #ffffff'>"
@@ -248,7 +249,10 @@ def _admit_ticket_html(reg, has_photo):
         return (f"<td class='stack' width='50%' style='padding:10px 12px;vertical-align:top'>"
                 f"<div style='font:700 10px/14px {font};letter-spacing:.12em;text-transform:uppercase;color:#6366f1'>{escape(label)}</div>"
                 f"<div style='margin-top:3px;font:600 14px/20px {font};color:#0f172a'>{escape(value)}</div></td>")
-    reporting = exam.reporting_time.strftime("%I:%M %p") if exam.reporting_time else "—"
+    reporting_time = (slot.reporting_time if slot else None) or exam.reporting_time
+    reporting = reporting_time.strftime("%I:%M %p") if reporting_time else "—"
+    exam_time = (slot.slot_time if slot else "") or exam.exam_time
+    venue = (slot.venue if slot else "") or exam.venue
     return f"""
     <tr><td style='padding:4px 32px 8px' class='px'>
       <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='border-radius:18px;overflow:hidden;border:1px solid #c7d2fe;background:#ffffff'>
@@ -256,7 +260,7 @@ def _admit_ticket_html(reg, has_photo):
           <table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>
             <td class='stack ticket-photo' width='108' align='center' style='vertical-align:middle;padding-right:14px'>{photo}</td>
             <td class='stack' style='vertical-align:middle'>
-              <div style='font:700 10px/14px {font};letter-spacing:.16em;text-transform:uppercase;color:#c7d2fe'>Admit card · {escape(exam.code)}</div>
+              <div style='font:700 10px/14px {font};letter-spacing:.16em;text-transform:uppercase;color:#c7d2fe'>Admit card · {escape(exam.code)}{f" · {escape(slot.label)}" if slot else ""}</div>
               <div style='margin-top:4px;font:800 20px/26px {font};color:#ffffff'>{escape(reg.full_name)}</div>
               <div style='margin-top:2px;font:500 13px/18px {font};color:#e0e7ff'>S/o / D/o {escape(reg.father_name)}</div>
               <table role='presentation' cellpadding='0' cellspacing='0' style='margin-top:12px'><tr>
@@ -270,11 +274,11 @@ def _admit_ticket_html(reg, has_photo):
         </td></tr>
         <tr><td style='border-top:2px dashed #c7d2fe'>
           <table role='presentation' width='100%' cellpadding='0' cellspacing='0'>
-            <tr>{cell("Exam date", f"{exam.exam_date:%a, %d %b %Y}")}{cell("Exam time", exam.exam_time or "Will be announced")}</tr>
+            <tr>{cell("Exam date", f"{exam.exam_date:%a, %d %b %Y}")}{cell("Exam time", exam_time or "Will be announced")}</tr>
             <tr>{cell("Reporting time", reporting)}{cell("Registration no.", reg.registration_no)}</tr>
             <tr>{cell("Class / Qualification", class_level_label(reg.class_level) or "—")}{cell("Subject", reg.subject)}</tr>
             <tr><td colspan='2' style='padding:0'><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{cell("School", reg.school_name or "—")}</tr></table></td></tr>
-            <tr><td colspan='2' style='padding:0'><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{cell("Venue", exam.venue or "Will be announced")}</tr></table></td></tr>
+            <tr><td colspan='2' style='padding:0'><table role='presentation' width='100%' cellpadding='0' cellspacing='0'><tr>{cell("Venue", venue or "Will be announced")}</tr></table></td></tr>
           </table>
         </td></tr>
       </table>

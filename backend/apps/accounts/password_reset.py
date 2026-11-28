@@ -18,6 +18,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.stre import security as captcha_security
+
 from apps.core.audit import log_action
 from apps.core.throttles import AtomicAnonRateThrottle
 
@@ -99,6 +101,10 @@ class PasswordResetRequestView(APIView):
     throttle_classes = [ResetThrottle]
 
     def post(self, request):
+        captcha_security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         email = str(request.data.get("email", "")).strip().lower()
         if "@" not in email or len(email) > 254:
             raise ValidationError({"email": "Enter a valid email address."})

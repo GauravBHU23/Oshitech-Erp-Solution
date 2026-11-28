@@ -5,6 +5,7 @@ export type ToastKind = "success" | "error" | "info";
 export interface ToastItem { id: number; kind: ToastKind; message: string }
 
 const EVENT = "oshitech:toast";
+const CLEAR_EVENT = "oshitech:toast:clear";
 let counter = 0;
 
 /** Kisi bhi jagah se toast dikhao: toast.success("Saved"), toast.error("Failed"). */
@@ -17,7 +18,11 @@ export const toast = {
   success: (message: string) => show("success", message),
   error: (message: string) => show("error", message),
   info: (message: string) => show("info", message),
+  clear: () => {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(CLEAR_EVENT));
+  },
   EVENT,
+  CLEAR_EVENT,
 };
 
 /** Jab bhi message state badle (khali na ho), toast dikhao. */

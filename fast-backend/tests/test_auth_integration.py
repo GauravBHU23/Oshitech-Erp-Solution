@@ -8,7 +8,6 @@ import os
 import unittest
 import uuid
 from datetime import datetime, timezone
-from unittest import mock
 
 
 class AuthIntegrationTests(unittest.TestCase):
@@ -16,6 +15,14 @@ class AuthIntegrationTests(unittest.TestCase):
     def setUpClass(cls):
         if os.environ.get("FASTAPI_DB_INTEGRATION") != "1":
             raise unittest.SkipTest("Set FASTAPI_DB_INTEGRATION=1 to run the local integration test.")
+
+        # Force Cloudflare's dummy test secret key regardless of whatever real Turnstile
+        # key is configured in .env for local/manual testing — mirrors backend/config/
+        # settings/dev.py's test-only override so the login flow stays testable offline.
+        from app.config import get_settings
+
+        os.environ["TURNSTILE_SECRET_KEY"] = "1x0000000000000000000000000000000AA"
+        get_settings.cache_clear()
 
         from redis import Redis
         from sqlalchemy.engine import make_url
@@ -51,7 +58,6 @@ class AuthIntegrationTests(unittest.TestCase):
         cls.user_id = uuid.uuid4()
         cls.email = f"fastapi-integration-{cls.user_id.hex}@example.com"
         cls.password = "Test-only-Password-9482!"
-        cls.captcha_id = None
 
         async def create_user():
             async with async_session_maker() as session:
@@ -85,7 +91,6 @@ class AuthIntegrationTests(unittest.TestCase):
 
         from app.accounts.models import BlacklistedToken, OutstandingToken, User
         from app.config import get_settings
-        from app.core.models import StreCaptcha
         from app.db.base import async_session_maker, engine
 
         async def cleanup_database():
@@ -100,10 +105,6 @@ class AuthIntegrationTests(unittest.TestCase):
                     delete(OutstandingToken).where(OutstandingToken.user_id == cls.user_id)
                 )
                 await session.execute(delete(User).where(User.id == cls.user_id))
-                if cls.captcha_id:
-                    await session.execute(
-                        delete(StreCaptcha).where(StreCaptcha.id == cls.captcha_id)
-                    )
                 await session.commit()
             await engine.dispose()
 
@@ -126,7 +127,7 @@ class AuthIntegrationTests(unittest.TestCase):
     def test_login_me_refresh_logout(self):
         from fastapi.testclient import TestClient
 
-        from app.core.security import captcha as captcha_security
+        from app.core.security.captcha import TURNSTILE_TEST_TOKEN
         from app.main import app
 
         with TestClient(app, base_url="https://testserver") as client:
@@ -135,26 +136,13 @@ class AuthIntegrationTests(unittest.TestCase):
             csrf_token = client.cookies.get("csrftoken")
             self.assertTrue(csrf_token)
 
-            system_random = captcha_security.random.SystemRandom
-
-            class FixedSystemRandom(system_random):
-                def choice(self, sequence):
-                    return sequence[0]
-
-            with mock.patch.object(captcha_security.random, "SystemRandom", FixedSystemRandom):
-                captcha_response = client.get("/api/v1/auth/captcha/")
-            self.assertEqual(captcha_response.status_code, 200, captcha_response.text)
-            captcha_data = captcha_response.json()
-            self.__class__.captcha_id = uuid.UUID(captcha_data["id"])
-
             login_response = client.post(
                 "/api/v1/auth/login/",
                 headers={"X-CSRFToken": csrf_token},
                 json={
                     "email": self.email,
                     "password": self.password,
-                    "captcha_id": captcha_data["id"],
-                    "captcha": "22222",
+                    "turnstile_token": TURNSTILE_TEST_TOKEN,
                 },
             )
             self.assertEqual(login_response.status_code, 200, login_response.text)

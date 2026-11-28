@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.accounts.serializers import validate_profile_photo_file
-from apps.core.validators import normalize_phone
+from apps.core.validators import normalize_mobile, normalize_phone
 
 from .models import School
 
@@ -37,8 +37,12 @@ class CreateSchoolAdminSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField()
     last_name = serializers.CharField(required=False, allow_blank=True, default="")
+    phone = serializers.CharField(max_length=15, required=False, allow_blank=True, default="")
     password = serializers.CharField(write_only=True)
     profile_photo = serializers.FileField(required=False)
+
+    def validate_phone(self, value):
+        return normalize_mobile(value)
 
     def validate_profile_photo(self, value):
         return validate_profile_photo_file(value)

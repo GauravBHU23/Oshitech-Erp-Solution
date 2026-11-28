@@ -1,8 +1,10 @@
-"""CAPTCHA and shared rate limiting for Django's separate admin login."""
+"""Self-hosted text captcha + Cloudflare Turnstile and shared rate limiting for Django's
+separate admin login."""
 import base64
 import hmac
 
 from django import forms
+from django.conf import settings
 from django.contrib.admin.forms import AdminAuthenticationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -26,7 +28,7 @@ def _issue_captcha(request):
 
 
 class AdminCaptchaAuthenticationForm(AdminAuthenticationForm):
-    captcha = forms.CharField(label=_("I'm not a robot"), max_length=5)
+    captcha = forms.CharField(label=_("Type the letters shown"), max_length=5)
 
     def clean(self):
         expected_id = self.request.session.get(CAPTCHA_ID_SESSION_KEY)
@@ -40,6 +42,13 @@ class AdminCaptchaAuthenticationForm(AdminAuthenticationForm):
         except DRFValidationError as exc:
             _issue_captcha(self.request)
             raise ValidationError(_("The CAPTCHA did not match. Try the new image.")) from exc
+
+        token = self.data.get("cf-turnstile-response", "")
+        try:
+            captcha_security.check_turnstile(token, self.request.META.get("REMOTE_ADDR"))
+        except DRFValidationError as exc:
+            _issue_captcha(self.request)
+            raise ValidationError(_("Complete the ‘I'm not a robot’ check and try again.")) from exc
 
         # Prepare a new one before password validation so failed credentials
         # are rendered with a fresh single-use challenge.
@@ -76,6 +85,7 @@ def secure_admin_login(admin_site):
 
         if request.method == "GET":
             _issue_captcha(request)
+        extra_context = {**(extra_context or {}), "turnstile_site_key": settings.TURNSTILE_SITE_KEY}
         return original_login(request, extra_context=extra_context)
 
     admin_site.login_form = AdminCaptchaAuthenticationForm

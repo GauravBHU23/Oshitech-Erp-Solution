@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from PIL import Image
 from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 
@@ -9,6 +10,9 @@ from apps.core.roles import Role
 from .models import RegistrationRequest
 from .pii import encrypt_aadhaar, decrypt_aadhaar
 from apps.core.validators import normalize_mobile, validate_birth_date, validate_person_name
+from apps.core.demographics import CASTE_CATEGORY_CHOICES, STATE_CHOICES
+
+MAX_IMAGE_DIMENSION = 4000  # pixels, either side
 
 User = get_user_model()
 
@@ -38,6 +42,20 @@ def validate_profile_photo_file(value):
     )
     if not valid:
         raise serializers.ValidationError("Upload a JPG, PNG, GIF, or WebP image.")
+    # Decode it: rejects corrupt files and decompression-bomb-style images whose
+    # magic bytes are valid but whose declared pixel dimensions are absurd.
+    try:
+        with Image.open(value) as img:
+            img.verify()
+        value.seek(0)
+        with Image.open(value) as img:
+            width, height = img.size
+    except Exception as exc:  # noqa: BLE001 — any decode failure means a bad/unsafe image
+        raise serializers.ValidationError("This image file is corrupted or unsupported.") from exc
+    finally:
+        value.seek(0)
+    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+        raise serializers.ValidationError(f"Image dimensions must be {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION} pixels or smaller.")
     return value
 
 
@@ -115,6 +133,8 @@ class AccountDirectorySerializer(serializers.ModelSerializer):
                 "classroom": str(profile.classroom) if profile.classroom_id else "",
                 "date_of_birth": profile.date_of_birth,
                 "gender": profile.get_gender_display() if profile.gender else "",
+                "caste_category": profile.get_caste_category_display() if profile.caste_category else "",
+                "state": profile.get_state_code_display() if profile.state_code else "",
                 "father_name": profile.father_name,
                 "mother_name": profile.mother_name,
                 "guardian_phone": profile.guardian_phone,
@@ -151,8 +171,10 @@ class CreateTeacherProfileSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, style={"input_type": "password"})
+    portal_role = serializers.ChoiceField(choices=Role.choices, required=False)
     captcha_id = serializers.UUIDField()
     captcha = serializers.CharField(max_length=10, trim_whitespace=True)
+    turnstile_token = serializers.CharField(max_length=2048, trim_whitespace=True)
 
 
 class PasswordChangeSerializer(serializers.Serializer):
@@ -187,6 +209,8 @@ class RegistrationRequestCreateSerializer(serializers.Serializer):
     class_level = serializers.ChoiceField(choices=[(str(number), f"Class {number}") for number in range(1, 13)], required=False)
     date_of_birth = serializers.DateField(required=False)
     gender = serializers.ChoiceField(choices=["M", "F", "O"], required=False, allow_blank=True, default="")
+    caste_category = serializers.ChoiceField(choices=CASTE_CATEGORY_CHOICES, required=False, allow_blank=True, default="")
+    state_code = serializers.ChoiceField(choices=STATE_CHOICES, required=False, allow_blank=True, default="")
     father_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     mother_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     guardian_phone = serializers.CharField(max_length=15, required=False, allow_blank=True)
@@ -237,7 +261,7 @@ class RegistrationRequestCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({"email": "A registration request for this email is already pending review."})
         details = {}
         if attrs["role"] == Role.STUDENT:
-            required = ["last_name", "date_of_birth", "class_level", "gender", "father_name", "mother_name", "guardian_phone", "address"]
+            required = ["last_name", "date_of_birth", "class_level", "gender", "caste_category", "state_code", "father_name", "mother_name", "guardian_phone", "address"]
             # Course / academic year tabhi zaroori jab school ne unhe set kiya ho
             if Course.objects.filter(school=school, is_active=True).exists():
                 required.append("course_id")
@@ -252,7 +276,7 @@ class RegistrationRequestCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"course_id": "Select an active course from this school."})
             if attrs.get("academic_year_id") and not year:
                 raise serializers.ValidationError({"academic_year_id": "Select an academic year from this school."})
-            details = {"date_of_birth": attrs["date_of_birth"].isoformat(), "class_level": attrs["class_level"], "gender": attrs.get("gender", ""), "father_name": attrs["father_name"].strip(), "mother_name": attrs["mother_name"].strip(), "guardian_phone": attrs["guardian_phone"], "address": attrs["address"]}
+            details = {"date_of_birth": attrs["date_of_birth"].isoformat(), "class_level": attrs["class_level"], "gender": attrs.get("gender", ""), "caste_category": attrs["caste_category"], "state_code": attrs["state_code"], "father_name": attrs["father_name"].strip(), "mother_name": attrs["mother_name"].strip(), "guardian_phone": attrs["guardian_phone"], "address": attrs["address"]}
             if course:
                 details.update({"course_id": str(course.pk), "course_name": course.name})
             if year:

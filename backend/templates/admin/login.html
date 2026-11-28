@@ -2,7 +2,7 @@
 {% load i18n static %}
 
 {% block title %}{% if form.errors %}{% translate "Error:" %} {% endif %}{{ block.super }}{% endblock %}
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin/css/login.css' %}">{{ form.media }}{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'admin/css/login.css' %}">{{ form.media }}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endblock %}
 {% block bodyclass %}{{ block.super }} login{% endblock %}
 {% block usertools %}{% endblock %}
 {% block nav-global %}{% endblock %}
@@ -18,7 +18,8 @@
   <form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
     <div class="form-row">{{ form.username.errors }}{{ form.username.label_tag }} {{ form.username }}</div>
     <div class="form-row">{{ form.password.errors }}{{ form.password.label_tag }} {{ form.password }}<input type="hidden" name="next" value="{{ next }}"></div>
-    <div class="form-row">{{ form.captcha.errors }}<label for="id_captcha">{% translate "I'm not a robot" %}</label><div style="margin:8px 0"><img width="190" height="60" alt="CAPTCHA challenge" src="data:image/svg+xml;base64,{{ request.session.admin_login_captcha_image }}"></div><input type="hidden" name="captcha_id" value="{{ request.session.admin_login_captcha_id }}">{{ form.captcha }}</div>
+    <div class="form-row">{{ form.captcha.errors }}<label for="id_captcha">{% translate "Type the letters shown" %}</label><div style="margin:8px 0"><img width="190" height="60" alt="CAPTCHA challenge" src="data:image/svg+xml;base64,{{ request.session.admin_login_captcha_image }}"></div><input type="hidden" name="captcha_id" value="{{ request.session.admin_login_captcha_id }}">{{ form.captcha }}</div>
+    <div class="form-row"><label>{% translate "I'm not a robot" %}</label><div style="margin:8px 0" class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}"></div></div>
     {% url 'admin_password_reset' as password_reset_url %}{% if password_reset_url %}<div class="password-reset-link"><a href="{{ password_reset_url }}">{% translate 'Forgotten your login credentials?' %}</a></div>{% endif %}
     <div class="submit-row"><input type="submit" value="{% translate 'Log in' %}"></div>
   </form>

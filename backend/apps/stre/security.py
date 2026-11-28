@@ -1,14 +1,19 @@
-"""STRE: email OTP verification aur self-hosted captcha (koi bahari service nahi)."""
+"""STRE: email OTP verification, self-hosted text captcha, aur Cloudflare Turnstile
+("I'm not a robot") verification — dono layers ek saath chalte hain."""
 import hashlib
 import hmac
+import json
 import math
 import random
 import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import timedelta
 
 from django.conf import settings
-from django.core import signing
 from django.utils import timezone
+from django.core import signing
 from rest_framework.exceptions import ValidationError
 
 from .models import StreCaptcha, StreEmailOtp
@@ -77,7 +82,7 @@ def check_email_token(email, token):
         raise ValidationError({"email": "The email was changed after verification. Please verify the new email."})
 
 
-# ---------------------------------------------------------------- captcha
+# ---------------------------------------------------------------- self-hosted text captcha
 
 # Har akshar lakeeron (strokes) se — 0..10 x 0..16 grid. SVG me koi <text> nahi hota.
 GLYPHS = {
@@ -158,3 +163,57 @@ def check_captcha(captcha_id, answer):
     captcha.delete()
     if not valid:
         raise ValidationError({"captcha": "Captcha did not match. Please try the new one."})
+
+
+# ---------------------------------------------------------------- Cloudflare Turnstile
+
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+# Cloudflare's published always-pass test secret key and the dummy token it accepts —
+# used by both backends' automated tests, never a live secret.
+# https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+TURNSTILE_TEST_SECRET_KEY = "1x0000000000000000000000000000000AA"
+TURNSTILE_TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX"
+
+
+def check_turnstile(token, remote_ip=None):
+    """Cloudflare Turnstile token ko server-side verify karo ('I'm not a robot' check)."""
+    if not token:
+        raise ValidationError({"captcha": "Please complete the ‘I'm not a robot’ check."})
+    if settings.TURNSTILE_SECRET_KEY == TURNSTILE_TEST_SECRET_KEY:
+        # Test secret key configured (local/dev/test) — accept only the matching dummy
+        # token without a network call, matching Cloudflare's documented test behavior.
+        if token != TURNSTILE_TEST_TOKEN:
+            raise ValidationError({"captcha": "Verification failed. Please try the check again."})
+        return
+    payload = {"secret": settings.TURNSTILE_SECRET_KEY, "response": token}
+    if remote_ip:
+        payload["remoteip"] = remote_ip
+    request = urllib.request.Request(
+        TURNSTILE_VERIFY_URL,
+        data=urllib.parse.urlencode(payload).encode(),
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = json.loads(response.read() or b"{}")
+    except (urllib.error.URLError, ValueError) as exc:
+        raise ValidationError({"captcha": "Could not verify the check right now. Please try again."}) from exc
+    if not result.get("success"):
+        raise ValidationError({"captcha": "Verification failed. Please try the check again."})
+
+
+def check_captcha_and_turnstile(captcha_id, answer, turnstile_token, remote_ip=None):
+    """Dono layers: pehle text captcha check karo, phir Turnstile verify karo.
+    Captcha ek hi baar chalta hai (delete ho jata hai), isliye usko pehle check karte hain
+    taaki turnstile network-call se pehle hi obvious galti pakdi jaye."""
+    check_captcha(captcha_id, answer)
+    check_turnstile(turnstile_token, remote_ip)
+
+
+def make_test_captcha_fields():
+    """Tests ke liye: ek fresh, jawab-pata text captcha + Turnstile test token, dono fields
+    ek dict me — jo bhi endpoint check_captcha_and_turnstile() use karta hai usme spread
+    kiya ja sakta hai: `{**form, **make_test_captcha_fields()}`."""
+    captcha = StreCaptcha.objects.create(answer_hash=_hash("ABCDE"), expires_at=timezone.now() + timedelta(minutes=5))
+    return {"captcha_id": str(captcha.pk), "captcha": "ABCDE", "turnstile_token": TURNSTILE_TEST_TOKEN}

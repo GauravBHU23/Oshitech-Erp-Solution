@@ -88,6 +88,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         {accountOpen && (
           <div role="menu" className="portal-sidebar-account-menu absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl border border-white/[0.08] bg-[#1e2a44] p-1.5 shadow-xl shadow-black/30">
             <Link href="/support" role="menuitem" className="flex min-h-10 w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"><Icon name="ticket" size={14} />Report a problem</Link>
+            <button type="button" role="menuitem" onClick={signOut} className="flex min-h-10 w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-red-400 transition hover:bg-white/10 hover:text-red-300"><Icon name="logout" size={14} />Logout</button>
           </div>
         )}
         <button

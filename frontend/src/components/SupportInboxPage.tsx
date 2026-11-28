@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Paginated } from "@/lib/types";
@@ -18,6 +18,14 @@ type SupportRequest = {
   status: "open" | "in_progress" | "resolved";
   created_at: string;
   updated_at: string;
+};
+
+type SupportMessage = {
+  id: string;
+  sender_type: "visitor" | "staff";
+  sender_name: string;
+  body: string;
+  created_at: string;
 };
 
 const categoryLabels: Record<SupportRequest["category"], string> = {
@@ -44,6 +52,11 @@ export default function SupportInboxPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updating, setUpdating] = useState("");
+  const [activeChatId, setActiveChatId] = useState("");
+  const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
+  const [chatReply, setChatReply] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const activeChatIdRef = useRef("");
 
   const load = () => {
     setLoading(true);
@@ -57,6 +70,77 @@ export default function SupportInboxPage() {
   };
 
   useEffect(() => { if (isAdmin) load(); }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const timer = window.setInterval(() => {
+      api<Paginated<SupportRequest>>("/support-requests/?page_size=100")
+        .then((data) => setRequests(data.results))
+        .catch((loadError: unknown) => setError(loadError instanceof ApiError ? loadError.message : "Could not refresh support requests."));
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [isAdmin]);
+
+  const loadChatMessages = useCallback(async (requestId: string) => {
+    try {
+      const thread = await api<SupportMessage[]>(`/support-requests/${requestId}/messages/`);
+      if (activeChatIdRef.current === requestId) {
+        setChatMessages(thread);
+        setError("");
+      }
+    } catch (loadError) {
+      if (activeChatIdRef.current === requestId) {
+        setError(loadError instanceof ApiError ? loadError.message : "Could not load this conversation.");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    let active = true;
+    const refreshMessages = async () => {
+      try {
+        const thread = await api<SupportMessage[]>(`/support-requests/${activeChatId}/messages/`);
+        if (active) {
+          setChatMessages(thread);
+          setError("");
+        }
+      } catch (loadError) {
+        if (active) setError(loadError instanceof ApiError ? loadError.message : "Could not load this conversation.");
+      }
+    };
+    void refreshMessages();
+    const timer = window.setInterval(() => void refreshMessages(), 7000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeChatId]);
+
+  const sendChatReply = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeChatId || !chatReply.trim()) return;
+    const requestId = activeChatId;
+    setChatBusy(true);
+    setError("");
+    try {
+      await api<SupportMessage>(`/support-requests/${requestId}/messages/`, {
+        method: "POST",
+        body: { body: chatReply.trim() },
+      });
+      setChatReply("");
+      setRequests((current) => current.map((request) => request.id === requestId ? { ...request, status: "in_progress" } : request));
+      if (activeChatIdRef.current === requestId) await loadChatMessages(requestId);
+    } catch (sendError) {
+      setError(sendError instanceof ApiError ? sendError.message : "Could not send this reply.");
+    } finally {
+      setChatBusy(false);
+    }
+  };
 
   const updateStatus = async (item: SupportRequest, status: SupportRequest["status"]) => {
     setUpdating(item.id);
@@ -82,7 +166,7 @@ export default function SupportInboxPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-indigo-600">Administrator tools</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Support inbox</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">Reports from users in your school. Super Admins can review all reports, including login issues from guests.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Messages refresh automatically. Super Admins can review guest website chats; school admins see requests for their school.</p>
         </div>
         <button type="button" className="btn-ghost" onClick={load} disabled={loading}>Refresh</button>
       </div>
@@ -107,7 +191,60 @@ export default function SupportInboxPage() {
               </select>
             </label>
           </div>
-          <p className="mt-4 whitespace-pre-wrap border-t border-slate-100 pt-4 text-sm leading-6 text-slate-700">{item.message}</p>
+          {activeChatId !== item.id && <p className="mt-4 whitespace-pre-wrap border-t border-slate-100 pt-4 text-sm leading-6 text-slate-700">{item.message}</p>}
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                if (activeChatId === item.id) {
+                  activeChatIdRef.current = "";
+                  setActiveChatId("");
+                  setChatMessages([]);
+                } else {
+                  activeChatIdRef.current = item.id;
+                  setActiveChatId(item.id);
+                  setChatMessages([]);
+                  setChatReply("");
+                }
+              }}
+            >
+              {activeChatId === item.id ? "Close conversation" : "View conversation"}
+            </button>
+            {activeChatId === item.id && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="mb-3 text-xs text-slate-500">Messages refresh automatically while this conversation is open.</p>
+                <div className="max-h-80 space-y-3 overflow-y-auto" aria-live="polite">
+                  {chatMessages.map((message) => (
+                    <div key={message.id} className={`flex ${message.sender_type === "staff" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[85%] rounded-xl px-3 py-2 ${message.sender_type === "staff" ? "bg-indigo-700 text-white" : "bg-white text-slate-800 shadow-sm"}`}>
+                        <p className={`text-[10px] font-semibold ${message.sender_type === "staff" ? "text-indigo-100" : "text-indigo-700"}`}>{message.sender_name}</p>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-sm">{message.body}</p>
+                        <time className={`mt-1 block text-right text-[10px] ${message.sender_type === "staff" ? "text-indigo-100" : "text-slate-400"}`} dateTime={message.created_at}>
+                          {new Date(message.created_at).toLocaleString()}
+                        </time>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={sendChatReply} className="mt-4 flex items-end gap-2">
+                  <label className="sr-only" htmlFor={`support-reply-${item.id}`}>Write a reply</label>
+                  <textarea
+                    id={`support-reply-${item.id}`}
+                    className="input min-h-11 flex-1 resize-y"
+                    value={chatReply}
+                    onChange={(event) => setChatReply(event.target.value)}
+                    placeholder="Write a reply to the visitor…"
+                    maxLength={4000}
+                    required
+                  />
+                  <button type="submit" className="btn-primary" disabled={chatBusy || !chatReply.trim()}>
+                    {chatBusy ? "Sending…" : "Reply"}
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
         </article>
       ))}
     </section>

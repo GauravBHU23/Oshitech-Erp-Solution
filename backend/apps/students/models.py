@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.core.models import TenantModel
+from apps.core.demographics import CASTE_CATEGORY_CHOICES, STATE_CHOICES
 
 BLOOD_GROUPS = [(g, g) for g in ("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")]
 
@@ -39,6 +40,8 @@ class Student(TenantModel):
     )
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=1, choices=Gender.choices, blank=True)
+    caste_category = models.CharField(max_length=10, choices=CASTE_CATEGORY_CHOICES, blank=True, default="")
+    state_code = models.CharField(max_length=2, choices=STATE_CHOICES, blank=True, default="")
     father_name = models.CharField(max_length=150, blank=True)
     mother_name = models.CharField(max_length=150, blank=True)
     guardian_phone = models.CharField(max_length=15, blank=True)  # parent / guardian contact number

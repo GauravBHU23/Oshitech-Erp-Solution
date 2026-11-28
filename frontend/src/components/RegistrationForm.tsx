@@ -10,6 +10,9 @@ import Icon from "@/components/Icon";
 import Spinner from "@/components/Spinner";
 import DateInput from "@/components/DateInput";
 import RegistrationApprovalSlip, { type RegistrationApprovalSlipData } from "@/components/RegistrationApprovalSlip";
+import TurnstileWidget from "@/components/TurnstileWidget";
+import StreCaptcha, { type CaptchaValue } from "@/components/StreCaptcha";
+import { STRE_CASTE_CATEGORIES, STRE_STATES, streCasteCategoryLabel, streStateLabel } from "@/lib/stre";
 
 type Portal = "student" | "teacher";
 type Option = { id: string; name: string; code?: string };
@@ -17,7 +20,7 @@ type Options = { school: { name: string; code: string }; courses: Option[]; acad
 
 const LABELS: Record<string, string> = {
   school_code: "School code", first_name: "First name", last_name: "Last name", email: "Email address", password: "Password",
-  class_level: "Class", date_of_birth: "Date of birth", gender: "Gender", father_name: "Father's name", mother_name: "Mother's name",
+  class_level: "Class", date_of_birth: "Date of birth", gender: "Gender", caste_category: "Caste category", state_code: "State", father_name: "Father's name", mother_name: "Mother's name",
   guardian_phone: "Parent phone", phone: "Phone", aadhaar_number: "Aadhaar number", address: "Full address",
   qualification: "Qualification", course_ids: "Courses", course_id: "Course", academic_year_id: "Academic year", profile_photo: "Profile photo",
 };
@@ -45,6 +48,9 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
   const [values, setValues] = useState<Record<string, string>>({ role: portal, gender: "" });
   const [dobText, setDobText] = useState("");
   const [registrationSlip, setRegistrationSlip] = useState<RegistrationApprovalSlipData | null>(null);
+  const [captcha, setCaptcha] = useState<CaptchaValue>({ captcha_id: "", captcha: "" });
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileKey, setTurnstileKey] = useState(0);
   const set = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => (prev[key] ? { ...prev, [key]: "" } : prev));
@@ -88,6 +94,8 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
     { const msg = nameError(values.first_name ?? ""); if (msg) next.first_name = msg; }
     { const msg = nameError(values.last_name ?? "", isStudent); if (msg) next.last_name = msg; }
     if (values.password && values.password.length < 10) next.password = "Password must be at least 10 characters.";
+    if (captcha.captcha.length !== 5) next.captcha = "Type the 5 characters shown in the image.";
+    else if (!turnstileToken) next.captcha = "Please complete the verification check.";
     return next;
   };
 
@@ -104,7 +112,7 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
       return;
     }
     setBusy(true);
-    const payload: Record<string, unknown> = { ...values, role: portal, school_code: options?.school.code };
+    const payload: Record<string, unknown> = { ...values, role: portal, school_code: options?.school.code, ...captcha, turnstile_token: turnstileToken };
     if (isStudent) {
       if (!values.course_id) delete payload.course_id;
       if (!values.academic_year_id) delete payload.academic_year_id;
@@ -126,7 +134,6 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
       toast.success("Registration submitted. Download your approval slip.");
       if (options) {
         const baseSlip = {
-          applicationId: response.id,
           reference: response.id.slice(0, 8).toUpperCase(),
           submittedAt: new Date().toISOString(),
           schoolName: options.school.name,
@@ -144,6 +151,8 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
             dateOfBirth: values.date_of_birth ?? "",
             classLevel: values.class_level ?? "",
             gender: values.gender ?? "",
+            casteCategory: streCasteCategoryLabel(values.caste_category),
+            state: streStateLabel(values.state_code),
             fatherName: values.father_name ?? "",
             motherName: values.mother_name ?? "",
             guardianPhone: values.guardian_phone ?? "",
@@ -173,7 +182,11 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
       setError(message);
       toast.error(message);
       if (keys[0]) document.querySelector<HTMLElement>(`[name="${keys[0]}"]`)?.focus();
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      setTurnstileToken("");
+      setTurnstileKey((k) => k + 1);
+    }
   };
 
   const printRegistrationSlip = () => {
@@ -257,6 +270,8 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
                 <FieldError id="reg-date_of_birth-error" message={errors.date_of_birth} />
               </label>
               <label className={wrap("gender")}>Gender<Req /><select className="input mt-1.5" required value={values.gender} onChange={(event) => set("gender", event.target.value)} {...control("gender")}><option value="">Select gender</option><option value="F">Female</option><option value="M">Male</option><option value="O">Other</option></select><FieldError id="reg-gender-error" message={errors.gender} /></label>
+              <label className={wrap("caste_category")}>Caste category<Req /><select className="input mt-1.5" required value={values.caste_category ?? ""} onChange={(event) => set("caste_category", event.target.value)} {...control("caste_category")}><option value="">Select category</option>{STRE_CASTE_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><FieldError id="reg-caste_category-error" message={errors.caste_category} /></label>
+              <label className={wrap("state_code")}>State<Req /><select className="input mt-1.5" required value={values.state_code ?? ""} onChange={(event) => set("state_code", event.target.value)} {...control("state_code")}><option value="">Select state</option>{STRE_STATES.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}</select><FieldError id="reg-state_code-error" message={errors.state_code} /></label>
               {input("father_name", "Father's name", "text", true, "", { maxLength: 150 })}
               {input("mother_name", "Mother's name", "text", true, "", { maxLength: 150 })}
               {phoneInput("guardian_phone", "Parent phone", true)}
@@ -273,6 +288,8 @@ export default function RegistrationForm({ portal }: { portal: Portal }) {
 
         {isStudent && options && <section><div className="mb-3 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs font-semibold text-indigo-700">03</span><div><h2 className="text-sm font-semibold text-slate-900">Course & academic year</h2><p className="mt-0.5 text-[11px] text-slate-500">Choose the course and session you are applying for.</p></div></div>{options.courses.length || options.academic_years.length ? <div className="grid gap-3 sm:grid-cols-2"><label className={wrap("course_id")}>Applying for course{options.courses.length > 0 && <Req />}<select className="input mt-1.5" required={options.courses.length > 0} value={values.course_id ?? ""} onChange={(event) => set("course_id", event.target.value)} {...control("course_id")}><option value="">{options.courses.length ? "Select course" : "No courses configured"}</option>{options.courses.map((course) => <option key={course.id} value={course.id}>{course.name} ({course.code})</option>)}</select><FieldError id="reg-course_id-error" message={errors.course_id} /></label><label className={wrap("academic_year_id")}>Academic year{options.academic_years.length > 0 && <Req />}<select className="input mt-1.5" required={options.academic_years.length > 0} value={values.academic_year_id ?? ""} onChange={(event) => set("academic_year_id", event.target.value)} {...control("academic_year_id")}><option value="">{options.academic_years.length ? "Select year" : "No academic years configured"}</option>{options.academic_years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select><FieldError id="reg-academic_year_id-error" message={errors.academic_year_id} /></label></div> : <p className="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-800">You can submit your application using the class you selected. The school can assign a course and academic year later.</p>}</section>}
 
+        <StreCaptcha value={captcha} onChange={(c) => { setCaptcha(c); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} error={errors.captcha} />
+        <TurnstileWidget token={turnstileToken} onChange={(t) => { setTurnstileToken(t); setErrors((x) => ({ ...x, captcha: "" })); }} reloadKey={turnstileKey} />
         {error && <div role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-md text-[11px] leading-5 text-slate-400">Registration is reviewed by the school. Your account stays inactive until the school places and activates your profile.</p><button className="btn-primary w-full shrink-0 !py-3 sm:w-auto" data-skip-validation-guard disabled={busy || !options || (!isStudent && options.courses.length === 0)}>{busy ? <><Spinner className="mr-2" />Submitting…</> : !isStudent && options?.courses.length === 0 ? "No active courses available" : !options ? "Find your school first" : "Submit registration"}</button></div>
       </form>}

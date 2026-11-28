@@ -14,8 +14,13 @@ export default function Toaster() {
       setItems((current) => [...current.filter((t) => t.message !== item.message), item].slice(-4));
       window.setTimeout(() => setItems((current) => current.filter((t) => t.id !== item.id)), item.kind === "error" ? 6000 : 4000);
     };
+    const clearToasts = () => setItems([]);
     window.addEventListener(toast.EVENT, onToast);
-    return () => window.removeEventListener(toast.EVENT, onToast);
+    window.addEventListener(toast.CLEAR_EVENT, clearToasts);
+    return () => {
+      window.removeEventListener(toast.EVENT, onToast);
+      window.removeEventListener(toast.CLEAR_EVENT, clearToasts);
+    };
   }, []);
 
   return (

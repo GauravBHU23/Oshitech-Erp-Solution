@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     cashfree_notify_url: str = ""
     stre_payee_name: str = "STRE Exam Cell"
 
+    # ---------- Cloudflare Turnstile ----------
+    # Defaults are Cloudflare's published always-pass test keys for local dev.
+    # https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+    turnstile_site_key: str = "1x00000000000000000000AA"
+    turnstile_secret_key: str = "1x0000000000000000000000000000000AA"
+
     @property
     def allowed_hosts_list(self) -> list[str]:
         return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]

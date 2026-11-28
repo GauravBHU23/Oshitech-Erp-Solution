@@ -26,7 +26,7 @@ from apps.core.throttles import AtomicAnonRateThrottle, AtomicScopedRateThrottle
 
 from . import emails, payments, security
 from .pdf import create_admit_card_pdf, create_registration_pdf
-from .models import StreEmailLog, StreExam, StreNotice, StreRegistration, StreSubject, StreSupportTicket, class_level_label
+from .models import StreEmailLog, StreExam, StreExamSlot, StreNotice, StreRegistration, StreSubject, StreSupportTicket, class_level_label
 from .serializers import (
     INTEREST_OPTIONS,
     StreEmailLogSerializer,
@@ -36,6 +36,7 @@ from .serializers import (
     StreAdminRegistrationSerializer,
     StreAdminRegistrationUpdateSerializer,
     StreExamSerializer,
+    StreExamSlotSerializer,
     StrePublicRegistrationSerializer,
     StreRegistrationCreateSerializer,
     StreSubjectSerializer,
@@ -183,11 +184,15 @@ class PublicInfoView(APIView):
     @staticmethod
     def _cached_payload():
         exam = current_exam()
+        slots = [] if exam is None else list(
+            exam.slots.filter(is_active=True).values("id", "label", "reporting_time", "slot_time", "venue")
+        )
         return {
             "exam": None if exam is None else {
                 "title": exam.title, "code": exam.code, "exam_date": exam.exam_date, "exam_time": exam.exam_time,
                 "last_date": exam.last_date, "fee": exam.fee, "venue": exam.venue, "instructions": exam.instructions,
             },
+            "slots": slots,
             "subjects": list(StreSubject.objects.filter(is_active=True).values_list("name", flat=True)),
             "interest_options": INTEREST_OPTIONS,
         }
@@ -211,6 +216,10 @@ class RegisterView(APIView):
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
     def post(self, request):
+        security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         exam = current_exam()
         if exam is None:
             raise ValidationError({"detail": "Registration is closed right now. Please check back later."})
@@ -219,6 +228,8 @@ class RegisterView(APIView):
         if hasattr(request.data, "getlist"):
             items = request.data.getlist("interests") or [v for k, v in request.data.items() if re.fullmatch(r"interests\[\d+\]", k)]
             data.setlist("interests", items) if hasattr(data, "setlist") else data.__setitem__("interests", items)
+        if not data.get("slot"):  # FormData empty string bhejta hai jab koi slot select na ho
+            data.pop("slot", None) if hasattr(data, "pop") else None
         serializer = StreRegistrationCreateSerializer(data=data, context={"exam": exam})
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -257,7 +268,10 @@ class StatusView(APIView):
         return Response(self._status_data(reg))
 
     def post(self, request):
-        security.check_captcha(request.data.get("captcha_id"), request.data.get("captcha"))
+        security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         reg_no = str(request.data.get("registration_no", "")).strip().upper()
         mobile = re.sub(r"\D", "", str(request.data.get("mobile", "")))[-10:]
         reg = StreRegistration.objects.select_related("exam").filter(registration_no=reg_no, mobile=mobile).first()
@@ -460,10 +474,14 @@ class AdmitCardView(APIView):
         reg = _by_token(token)
         if not reg.roll_no or reg.status != StreRegistration.Status.ADMIT_CARD_ISSUED:
             raise ValidationError({"detail": "The admit card has not been issued yet."})
-        security.check_captcha(request.query_params.get("captcha_id"), request.query_params.get("captcha"))
+        security.check_captcha_and_turnstile(
+            request.query_params.get("captcha_id"), request.query_params.get("captcha"),
+            request.query_params.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         if not reg.roll_no or reg.status != StreRegistration.Status.ADMIT_CARD_ISSUED:
             raise ValidationError({"detail": "The admit card has not been issued yet."})
         exam = reg.exam
+        slot = reg.slot
         return Response({
             "registration_no": reg.registration_no, "roll_no": reg.roll_no, "full_name": reg.full_name,
             "father_name": reg.father_name, "email": reg.email, "mobile": reg.mobile, "subject": reg.subject,
@@ -472,9 +490,12 @@ class AdmitCardView(APIView):
             "photo_url": f"/api/v1/stre/files/{reg.access_token}/photo/",
             "signature_url": f"/api/v1/stre/files/{reg.access_token}/signature/",
             "exam": {
-                "title": exam.title, "code": exam.code, "exam_date": exam.exam_date, "exam_time": exam.exam_time,
-                "reporting_time": exam.reporting_time, "venue": exam.venue, "instructions": exam.instructions,
+                "title": exam.title, "code": exam.code, "exam_date": exam.exam_date,
+                "exam_time": (slot.slot_time if slot else "") or exam.exam_time,
+                "reporting_time": (slot.reporting_time if slot else None) or exam.reporting_time,
+                "venue": (slot.venue if slot else "") or exam.venue, "instructions": exam.instructions,
             },
+            "slot_label": slot.label if slot else "",
         })
 
 
@@ -572,6 +593,14 @@ class StreSubjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsStreAdmin]
     pagination_class = StrePagination
     search_fields = ["name"]
+
+
+class StreExamSlotViewSet(viewsets.ModelViewSet):
+    queryset = StreExamSlot.objects.select_related("exam").all()
+    serializer_class = StreExamSlotSerializer
+    permission_classes = [IsAuthenticated, IsStreAdmin]
+    pagination_class = StrePagination
+    filterset_fields = ["exam"]
 
 
 def assign_roll_no(reg):
@@ -799,9 +828,9 @@ class StreRegistrationAdminViewSet(viewsets.ReadOnlyModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="stre-registrations.csv"'
         response.write("﻿")  # Excel ke liye UTF-8 BOM
         writer = csv.writer(response)
-        writer.writerow(["Registration no", "Roll no", "First name", "Last name", "Father's name", "Class / Qualification", "School / College", "Address", "Email", "Mobile", "Subject", "Interests", "Aim of life", "Status", "Amount", "Payment ref", "Registered on"])
+        writer.writerow(["Registration no", "Roll no", "First name", "Last name", "Father's name", "Gender", "Caste category", "State", "Class / Qualification", "School / College", "Address", "Email", "Mobile", "Subject", "Interests", "Aim of life", "Status", "Amount", "Payment ref", "Registered on"])
         for r in qs:
-            writer.writerow([r.registration_no, r.roll_no, r.first_name, r.last_name, r.father_name, class_level_label(r.class_level), r.school_name, r.address, r.email, r.mobile, r.subject, ", ".join(r.interests), r.aim_of_life, r.get_status_display(), r.amount, r.payment_reference or r.razorpay_payment_id, r.created_at.strftime("%d-%m-%Y %H:%M")])
+            writer.writerow([r.registration_no, r.roll_no, r.first_name, r.last_name, r.father_name, r.get_gender_display(), r.get_caste_category_display(), r.get_state_code_display(), class_level_label(r.class_level), r.school_name, r.address, r.email, r.mobile, r.subject, ", ".join(r.interests), r.aim_of_life, r.get_status_display(), r.amount, r.payment_reference or r.razorpay_payment_id, r.created_at.strftime("%d-%m-%Y %H:%M")])
         return response
 
 
@@ -1029,6 +1058,10 @@ class StreSupportCreateView(APIView):
     throttle_classes = [StreThrottle]
 
     def post(self, request):
+        security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         serializer = StreSupportCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ticket = serializer.save()
@@ -1155,3 +1188,4 @@ class StreCaptchaView(APIView):
     def get(self, request):
         captcha, svg = security.new_captcha()
         return Response({"id": str(captcha.pk), "svg": svg})
+

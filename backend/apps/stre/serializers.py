@@ -6,7 +6,19 @@ from apps.accounts.pii import decrypt_aadhaar, encrypt_aadhaar
 from apps.accounts.serializers import validate_profile_photo_file
 from apps.core.validators import normalize_mobile, validate_person_name
 
-from .models import CLASS_LEVEL_CHOICES, StreEmailLog, StreExam, StreNotice, StreRegistration, StreSubject, StreSupportTicket
+from .models import (
+    CASTE_CATEGORY_CHOICES,
+    CLASS_LEVEL_CHOICES,
+    GENDER_CHOICES,
+    STATE_CHOICES,
+    StreEmailLog,
+    StreExam,
+    StreExamSlot,
+    StreNotice,
+    StreRegistration,
+    StreSubject,
+    StreSupportTicket,
+)
 
 INTEREST_OPTIONS = [
     "Game Development", "App Development", "Web Development", "Artificial Intelligence", "Robotics",
@@ -18,12 +30,16 @@ INTEREST_OPTIONS = [
 class StreExamSerializer(serializers.ModelSerializer):
     registration_count = serializers.IntegerField(source="registrations.count", read_only=True)
     is_accepting = serializers.BooleanField(read_only=True)
+    label = serializers.SerializerMethodField()  # exam-slots dropdown me readable naam
 
     class Meta:
         model = StreExam
         fields = "__all__"
         # Result ON/OFF sirf Results page se (wahan rank + email bhi hota hai)
         read_only_fields = ["id", "created_at", "updated_at", "results_published", "results_published_at"]
+
+    def get_label(self, obj):
+        return f"{obj.title} ({obj.code})"
 
     def validate_code(self, value):
         value = value.strip().upper()
@@ -52,6 +68,15 @@ class StreExamSerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+
+class StreExamSlotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StreExamSlot
+        fields = ["id", "exam", "label", "reporting_time", "slot_time", "venue", "is_active"]
+
+    def validate_label(self, value):
+        return " ".join(value.split())
 
 
 class StreSubjectSerializer(serializers.ModelSerializer):
@@ -106,6 +131,9 @@ class StreRegistrationCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     mobile = serializers.CharField(max_length=16)
     father_name = serializers.CharField(max_length=150)
+    gender = serializers.ChoiceField(choices=GENDER_CHOICES)
+    caste_category = serializers.ChoiceField(choices=CASTE_CATEGORY_CHOICES)
+    state_code = serializers.ChoiceField(choices=STATE_CHOICES)
     school_name = serializers.CharField(max_length=200)
     class_level = serializers.ChoiceField(choices=CLASS_LEVEL_CHOICES, error_messages={"invalid_choice": "Select your class or qualification.", "required": "Select your class or qualification."})
     address = serializers.CharField(max_length=500)
@@ -116,6 +144,7 @@ class StreRegistrationCreateSerializer(serializers.Serializer):
     aadhaar_number = serializers.RegexField(r"^\d{12}$", error_messages={"invalid": "Aadhaar number must have exactly 12 digits."})
     photo = serializers.FileField()
     signature = serializers.FileField()
+    slot = serializers.PrimaryKeyRelatedField(queryset=StreExamSlot.objects.filter(is_active=True), required=False, allow_null=True, default=None)
     email_token = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
 
     def validate_first_name(self, value):
@@ -187,6 +216,11 @@ class StreRegistrationCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({"email": "This email is already registered for this exam. Use 'Check status' to see your registration."})
         if StreRegistration.objects.filter(exam=exam, mobile=attrs["mobile"]).exists():
             raise serializers.ValidationError({"mobile": "This mobile number is already registered for this exam."})
+        slot = attrs.get("slot")
+        if slot is not None and slot.exam_id != exam.id:
+            raise serializers.ValidationError({"slot": "Select a valid slot for this exam."})
+        elif slot is None and exam.slots.filter(is_active=True).exists():
+            raise serializers.ValidationError({"slot": "Please select an exam slot."})
         return attrs
 
     def create(self, validated):
@@ -214,6 +248,8 @@ class StrePublicRegistrationSerializer(serializers.ModelSerializer):
     exam_date = serializers.DateField(source="exam.exam_date", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     results_published = serializers.BooleanField(source="exam.results_published", read_only=True)
+    slot_label = serializers.CharField(source="slot.label", read_only=True, default="")
+    slot_time = serializers.CharField(source="slot.slot_time", read_only=True, default="")
 
     class Meta:
         model = StreRegistration
@@ -221,13 +257,18 @@ class StrePublicRegistrationSerializer(serializers.ModelSerializer):
             "results_published", "registration_no", "access_token", "full_name", "email", "mobile", "subject", "exam_title", "exam_date",
             "status", "status_label", "amount", "payment_method", "payment_reference", "paid_at", "roll_no",
             "admit_card_issued_at", "created_at", "payment_attempts", "last_payment_status", "last_payment_error",
+            "slot_label", "slot_time",
         ]
 
 
 class StreAdminRegistrationSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    gender_label = serializers.CharField(source="get_gender_display", read_only=True)
+    caste_category_label = serializers.CharField(source="get_caste_category_display", read_only=True)
+    state_label = serializers.CharField(source="get_state_code_display", read_only=True)
     exam_title = serializers.CharField(source="exam.title", read_only=True)
+    slot_label = serializers.CharField(source="slot.label", read_only=True, default="")
     aadhaar_number = serializers.SerializerMethodField()
     photo_url = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
@@ -268,6 +309,9 @@ class StreAdminRegistrationUpdateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False)
     mobile = serializers.CharField(max_length=16, required=False)
     father_name = serializers.CharField(max_length=150, required=False)
+    gender = serializers.ChoiceField(choices=GENDER_CHOICES, required=False, allow_blank=True)
+    caste_category = serializers.ChoiceField(choices=CASTE_CATEGORY_CHOICES, required=False, allow_blank=True)
+    state_code = serializers.ChoiceField(choices=STATE_CHOICES, required=False, allow_blank=True)
     school_name = serializers.CharField(max_length=200, required=False)
     class_level = serializers.ChoiceField(choices=CLASS_LEVEL_CHOICES, required=False)
     address = serializers.CharField(max_length=500, required=False)

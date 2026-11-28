@@ -6,19 +6,19 @@ import { imageErrorMessage, shrinkPhoto, shrinkSignature } from "@/lib/image";
 import { PHONE_HINT, cleanPhone, fieldErrors, isValidPhone, nameError } from "@/lib/validation";
 import type { Row } from "@/lib/types";
 import Spinner from "@/components/Spinner";
-import { STRE_CLASS_LEVELS, streSchoolFieldLabel } from "@/lib/stre";
+import { STRE_CASTE_CATEGORIES, STRE_GENDERS, STRE_STATES, STRE_CLASS_LEVELS, streSchoolFieldLabel } from "@/lib/stre";
 
 const LABELS: Record<string, string> = {
-  first_name: "First name", last_name: "Last name", email: "Email", mobile: "Mobile", father_name: "Father's name", school_name: "School / college name", class_level: "Class / qualification", address: "Address",
-  subject: "Subject", subject_interest: "Subject interest", interests: "Hobbies & interests", aim_of_life: "Aim of life",
-  aadhaar_number: "Aadhaar number", photo: "Photo", signature: "Signature", admin_note: "Admin note",
+  first_name: "First Name", last_name: "Last Name", email: "Email", mobile: "Mobile", father_name: "Father's Name", gender: "Gender", caste_category: "Caste Category", state_code: "State", school_name: "School / College Name", class_level: "Qualification", address: "Address",
+  subject: "Subject", subject_interest: "Subject Interest", interests: "Hobbies & Interests", aim_of_life: "Aim Of Life",
+  aadhaar_number: "Aadhaar Number", photo: "Photo", signature: "Signature", admin_note: "Admin Note",
 };
 
 /** STRE admin: candidate ki galti theek karne ka form. */
 export default function StreEditRegistration({ reg, onSaved, onCancel }: { reg: Row; onSaved: (r: Row) => void; onCancel: () => void }) {
   const [v, setV] = useState<Record<string, string>>({
     first_name: reg.first_name ?? "", last_name: reg.last_name ?? "", email: reg.email ?? "", mobile: reg.mobile ?? "",
-    father_name: reg.father_name ?? "", school_name: reg.school_name ?? "", class_level: reg.class_level ?? "", address: reg.address ?? "", subject: reg.subject ?? "", subject_interest: reg.subject_interest ?? "",
+    father_name: reg.father_name ?? "", gender: reg.gender ?? "", caste_category: reg.caste_category ?? "", state_code: reg.state_code ?? "", school_name: reg.school_name ?? "", class_level: reg.class_level ?? "", address: reg.address ?? "", subject: reg.subject ?? "", subject_interest: reg.subject_interest ?? "",
     interests: (reg.interests ?? []).join(", "), aim_of_life: reg.aim_of_life ?? "", aadhaar_number: "", admin_note: reg.admin_note ?? "",
   });
   const [photo, setPhoto] = useState<File | null>(null);
@@ -36,7 +36,7 @@ export default function StreEditRegistration({ reg, onSaved, onCancel }: { reg: 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) e.email = "Enter a valid email address.";
     if (!isValidPhone(v.mobile)) e.mobile = PHONE_HINT;
     if (v.subject.trim().length < 2) e.subject = "Enter the subject.";
-    if (!v.class_level) e.class_level = "Select the class or qualification.";
+    if (!v.class_level) e.class_level = "Select the qualification.";
     if (v.school_name.trim().length < 3) e.school_name = `Enter the ${streSchoolFieldLabel(v.class_level).toLowerCase()}.`;
     if (v.address.trim().length < 10) e.address = "Enter the full address.";
     if (!v.interests.split(",").some((i) => i.trim())) e.interests = "Enter at least one interest.";
@@ -45,7 +45,7 @@ export default function StreEditRegistration({ reg, onSaved, onCancel }: { reg: 
     if (Object.keys(e).length) { setErrors(e); toast.error("Please correct the fields marked in red."); return; }
 
     const form = new FormData();
-    for (const k of ["first_name", "last_name", "email", "mobile", "father_name", "class_level", "school_name", "address", "subject", "subject_interest", "aim_of_life", "admin_note"]) form.append(k, v[k].trim());
+    for (const k of ["first_name", "last_name", "email", "mobile", "father_name", "gender", "caste_category", "state_code", "class_level", "school_name", "address", "subject", "subject_interest", "aim_of_life", "admin_note"]) form.append(k, v[k].trim());
     v.interests.split(",").map((i) => i.trim()).filter(Boolean).forEach((i) => form.append("interests", i));
     if (v.aadhaar_number) form.append("aadhaar_number", v.aadhaar_number);
     if (photo) form.append("photo", photo);
@@ -87,11 +87,32 @@ export default function StreEditRegistration({ reg, onSaved, onCancel }: { reg: 
           {errors.mobile && <span role="alert" className="field-error mt-1 block text-xs font-medium">{errors.mobile}</span>}
         </label>
         {input("father_name", { maxLength: 150 })}
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">Gender</span>
+          <select className="input" value={v.gender} onChange={(e) => set("gender", e.target.value)}>
+            <option value="">Not provided</option>
+            {STRE_GENDERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">Caste category</span>
+          <select className="input" value={v.caste_category} onChange={(e) => set("caste_category", e.target.value)}>
+            <option value="">Not provided</option>
+            {STRE_CASTE_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-slate-600">State</span>
+          <select className="input" value={v.state_code} onChange={(e) => set("state_code", e.target.value)}>
+            <option value="">Not provided</option>
+            {STRE_STATES.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}
+          </select>
+        </label>
         {input("subject", { maxLength: 100 })}
         <label className={`block text-sm ${errors.class_level ? "has-error" : ""}`}>
-          <span className="mb-1 block font-medium text-slate-600">Class / qualification<span className="text-red-500"> *</span></span>
+          <span className="mb-1 block font-medium text-slate-600">Qualification<span className="text-red-500"> *</span></span>
           <select className="input" value={v.class_level} onChange={(e) => set("class_level", e.target.value)}>
-            <option value="">Select class / qualification</option>
+            <option value="">Select Qualification</option>
             {STRE_CLASS_LEVELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
           {errors.class_level && <span role="alert" className="field-error mt-1 block text-xs font-medium">{errors.class_level}</span>}

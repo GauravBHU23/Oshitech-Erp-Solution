@@ -86,13 +86,13 @@ function refresh() {
 
 export async function api<T = any>(
   path: string,
-  opts: { method?: string; body?: unknown; retried?: boolean; silent?: boolean } = {}
+  opts: { method?: string; body?: unknown; headers?: Record<string, string>; retried?: boolean; silent?: boolean } = {}
 ): Promise<T> {
   const method = opts.method ?? "GET";
   const unsafe = method !== "GET";
   if (unsafe) await ensureCsrf();
 
-  const headers: Record<string, string> = { ...NGROK_SKIP_BROWSER_WARNING_HEADERS };
+  const headers: Record<string, string> = { ...NGROK_SKIP_BROWSER_WARNING_HEADERS, ...opts.headers };
   const isFormData = typeof FormData !== "undefined" && opts.body instanceof FormData;
   if (opts.body !== undefined && !isFormData) headers["Content-Type"] = "application/json";
   if (unsafe) headers["X-CSRFToken"] = getCookie("csrftoken");

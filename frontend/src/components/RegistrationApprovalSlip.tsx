@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 type RegistrationSlipBase = {
-  applicationId: string;
   reference: string;
   submittedAt: string;
   schoolName: string;
@@ -27,6 +26,8 @@ export type RegistrationApprovalSlipData =
       dateOfBirth: string;
       classLevel: string;
       gender: string;
+      casteCategory: string;
+      state: string;
       fatherName: string;
       motherName: string;
       guardianPhone: string;
@@ -38,7 +39,7 @@ export type RegistrationApprovalSlipData =
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-slate-300 py-3">
+    <div className="registration-slip-field border-b border-slate-300 py-3">
       <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
       <p className="mt-1 break-words text-sm font-semibold text-slate-900">{value || "—"}</p>
     </div>
@@ -89,12 +90,11 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
         </h1>
       </header>
 
-      <div className="mt-5 flex items-start justify-between gap-5">
+      <div className="registration-slip-meta mt-5 flex items-start justify-between gap-5">
         <div className="grid flex-1 grid-cols-2 gap-x-6">
           <Field label="Application reference" value={data.reference} />
           <Field label="Application status" value="Pending school approval" />
           <Field label="Submitted on (IST)" value={submittedAt} />
-          <Field label="Application ID" value={data.applicationId} />
         </div>
         {photoUrl && (
           <img
@@ -105,11 +105,11 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
         )}
       </div>
 
-      <section className="mt-6">
+      <section className="registration-applicant-details mt-6">
         <h3 className="border-b border-slate-400 pb-2 text-xs font-extrabold uppercase tracking-[0.12em]">
           Applicant details
         </h3>
-        <div className="grid grid-cols-2 gap-x-8">
+        <div className="registration-applicant-fields grid grid-cols-2 gap-x-8">
           <Field label="Full name" value={`${data.firstName} ${data.lastName}`.trim()} />
           <Field label="Email address" value={data.email} />
           <Field label={isStudent ? "Student phone" : "Phone number"} value={data.phone} />
@@ -117,6 +117,8 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
             <Field label="Class" value={`Class ${data.classLevel}`} />
             <Field label="Date of birth" value={formatDate(data.dateOfBirth)} />
             <Field label="Gender" value={{ M: "Male", F: "Female", O: "Other" }[data.gender] ?? "—"} />
+            <Field label="Caste category" value={data.casteCategory} />
+            <Field label="State" value={data.state} />
             <Field label="Father's name" value={data.fatherName} />
             <Field label="Mother's name" value={data.motherName} />
             <Field label="Parent phone" value={data.guardianPhone} />
@@ -139,7 +141,7 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
         </div>
       </section>
 
-      <section className="mt-6 border border-slate-400 p-4">
+      <section className="registration-slip-declaration mt-6 border border-slate-400 p-4">
         <h3 className="text-xs font-extrabold uppercase tracking-[0.12em]">Applicant declaration</h3>
         <p className="mt-2 text-xs leading-5 text-slate-700">
           I confirm that the information on this application is accurate and understand that school approval and
@@ -151,7 +153,7 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
         </div>
       </section>
 
-      <section className="mt-6 border-2 border-slate-700 p-4">
+      <section className="registration-approval-decision mt-6 border-2 border-slate-700 p-4">
         <h3 className="text-xs font-extrabold uppercase tracking-[0.12em]">School office — approval decision</h3>
         <div className="mt-3 flex gap-8 text-sm font-semibold">
           <p>☐ Approved</p>
@@ -168,7 +170,7 @@ export default function RegistrationApprovalSlip({ data }: { data: RegistrationA
         </div>
       </section>
 
-      <footer className="mt-5 border-t border-slate-300 pt-3 text-center text-[9px] text-slate-500">
+      <footer className="registration-slip-footer mt-5 border-t border-slate-300 pt-3 text-center text-[9px] text-slate-500">
         Keep this slip for school records. Passwords are never printed on application slips.
       </footer>
     </article>

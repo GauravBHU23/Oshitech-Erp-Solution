@@ -139,25 +139,26 @@ or broad caches.
 
 ## Login flow from Next.js
 1. `GET auth/csrf/` (sets the `csrftoken` cookie)
-2. `GET auth/captcha/` (returns a one-use, five-minute login challenge)
-3. `POST auth/login/` (send `captcha_id` and `captcha` with the credentials; sets httpOnly auth cookies)
+2. `GET auth/captcha/` (returns a one-use, five-minute text-captcha challenge) and render the Cloudflare Turnstile widget client-side to get a `turnstile_token`
+3. `POST auth/login/` (send `captcha_id`, `captcha`, `turnstile_token` and the credentials; sets httpOnly auth cookies)
 4. Every unsafe request sends the header `X-CSRFToken: <csrftoken cookie>` with `credentials: "include"`
 5. On 401, call `POST auth/refresh/`
 
 ## Security already in place
 Argon2 password hashing, 10+ character password rule, httpOnly cookies, CSRF checks, short-lived access
 token with rotating/blacklisted refresh tokens, server-enforced idle sign-out (30 min) and absolute session limit (12 h),
-atomic throttling shared through Redis across production workers, one-use CAPTCHA challenges on portal and Django admin sign-in,
-a 15-minute lockout after 5 failures, UUID IDs, every query scoped to the school,
-cross-school foreign keys blocked, role permissions, audit log (down to marks edits), result publish =
-lock, encrypted Aadhaar numbers, captcha and email OTP on public STRE pages, verified Cashfree webhooks,
-HSTS/SSL/secure cookies in production, and a secret admin URL. Every protected API request validates its
-signed JWT session id against shared server state. Logout and password changes revoke sessions across
-tabs and backend replicas. Django admin sessions also expire on idle and at the absolute limit.
+atomic throttling shared through Redis across production workers, a one-use text CAPTCHA plus a Cloudflare
+Turnstile ("I'm not a robot") challenge on portal and Django admin sign-in, a 15-minute lockout after 5
+failures, UUID IDs, every query scoped to the school, cross-school foreign keys blocked, role permissions,
+audit log (down to marks edits), result publish = lock, encrypted Aadhaar numbers, CAPTCHA + Turnstile and
+email OTP on public STRE pages, verified Cashfree webhooks, HSTS/SSL/secure cookies in production, and a
+secret admin URL. Every protected API request validates its signed JWT session id against shared server
+state. Logout and password changes revoke sessions across tabs and backend replicas. Django admin sessions
+also expire on idle and at the absolute limit.
 
 Private API views default to authentication. Login, refresh, health, public notices, registration,
 payment webhooks, and verification/lookups intentionally remain anonymous and retain their own CAPTCHA,
-OTP, signature or rate-limit controls.
+Turnstile, OTP, signature or rate-limit controls.
 
 ## Next steps
 Server-side PDFs (Celery), 2FA for admins/teachers, online payment for school fees, SMS/WhatsApp alerts,

@@ -22,6 +22,7 @@ class AdminLoginSecurityTests(TestCase):
         response = self.client.get(reverse("admin:login"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "I'm not a robot")
+        self.assertContains(response, "cf-turnstile")
         self.assertContains(response, "data:image/svg+xml;base64,")
         self.assertTrue(self.client.session.get("admin_login_captcha_id"))
 
@@ -32,7 +33,7 @@ class AdminLoginSecurityTests(TestCase):
             email="staff@admin-test.example", password="Strong-Password-73!", is_staff=True
         )
         self.client.get(reverse("admin:login"))
-        with patch("apps.accounts.admin_auth.captcha_security.check_captcha"):
+        with patch("apps.accounts.admin_auth.captcha_security.check_captcha"), patch("apps.accounts.admin_auth.captcha_security.check_turnstile"):
             for _ in range(5):
                 session = self.client.session
                 response = self.client.post(reverse("admin:login"), {
@@ -40,6 +41,7 @@ class AdminLoginSecurityTests(TestCase):
                     "password": "incorrect",
                     "captcha_id": session["admin_login_captcha_id"],
                     "captcha": "ABCDE",
+                    "cf-turnstile-response": "test-token",
                 })
                 self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
@@ -312,9 +314,22 @@ class ForgotPasswordTests(APITestCase):
         from django.core import mail
         return re.search(r"Verification code:\s*(\d+)", mail.outbox[-1].body).group(1)
 
+    def reset_request(self, **overrides):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.stre.models import StreCaptcha
+        from apps.stre.security import TURNSTILE_TEST_TOKEN, _hash
+
+        captcha = StreCaptcha.objects.create(answer_hash=_hash("ABCDE"), expires_at=timezone.now() + timedelta(minutes=5))
+        body = {"captcha_id": str(captcha.pk), "captcha": "ABCDE", "turnstile_token": TURNSTILE_TEST_TOKEN}
+        body.update(overrides)
+        return self.client.post("/api/v1/auth/forgot-password/", body, format="json")
+
     def test_full_reset_flow(self):
         from django.core import mail
-        res = self.client.post("/api/v1/auth/forgot-password/", {"email": "S1@f.com", "portal": "student"}, format="json")
+        res = self.reset_request(email="S1@f.com", portal="student")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(mail.outbox), 1)
         code = self.code()
@@ -332,8 +347,8 @@ class ForgotPasswordTests(APITestCase):
 
     def test_unknown_email_and_wrong_portal_get_same_no_account_response(self):
         from django.core import mail
-        a = self.client.post("/api/v1/auth/forgot-password/", {"email": "nobody@f.com", "portal": "student"}, format="json")
-        b = self.client.post("/api/v1/auth/forgot-password/", {"email": "s1@f.com", "portal": "teacher"}, format="json")
+        a = self.reset_request(email="nobody@f.com", portal="student")
+        b = self.reset_request(email="s1@f.com", portal="teacher")
         self.assertEqual(a.status_code, 400)
         self.assertEqual(a.data, b.data)
         self.assertIn("No account found for this sign-in", str(a.data))
@@ -342,13 +357,13 @@ class ForgotPasswordTests(APITestCase):
 
     def test_wrong_portal_gets_generic_response_and_no_code(self):
         from django.core import mail
-        res = self.client.post("/api/v1/auth/forgot-password/", {"email": "s1@f.com", "portal": "teacher"}, format="json")
+        res = self.reset_request(email="s1@f.com", portal="teacher")
         self.assertEqual(res.status_code, 400)
         self.assertIn("No account found for this sign-in", str(res.data))
         self.assertEqual(len(mail.outbox), 0)
 
     def test_wrong_code_attempts_limited(self):
-        self.client.post("/api/v1/auth/forgot-password/", {"email": "s1@f.com", "portal": "student"}, format="json")
+        self.reset_request(email="s1@f.com", portal="student")
         code = self.code()
         bad = "000000" if code != "000000" else "111111"
         for _ in range(5):
@@ -358,8 +373,8 @@ class ForgotPasswordTests(APITestCase):
 
     def test_resend_wait(self):
         from django.core import mail
-        first = self.client.post("/api/v1/auth/forgot-password/", {"email": "s1@f.com", "portal": "student"}, format="json")
-        second = self.client.post("/api/v1/auth/forgot-password/", {"email": "s1@f.com", "portal": "student"}, format="json")
+        first = self.reset_request(email="s1@f.com", portal="student")
+        second = self.reset_request(email="s1@f.com", portal="student")
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.data, second.data)

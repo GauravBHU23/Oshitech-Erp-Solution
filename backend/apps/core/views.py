@@ -1,5 +1,7 @@
 import hashlib
+import hmac
 import logging
+import secrets
 import uuid
 
 from django.conf import settings
@@ -22,12 +24,15 @@ from apps.teachers.models import Teacher
 
 from .audit import get_client_ip
 from .pagination import StandardPagination
-from .models import AuditLog, SiteVisitor, SupportRequest
+from .models import AuditLog, SiteVisitor, SupportMessage, SupportRequest
 from .permissions import AdminEmailPermission, RoleAccess
 from .roles import ADMIN_ONLY, Role
 from .throttles import AtomicAnonRateThrottle, AtomicScopedRateThrottle
 from .serializers_audit import AuditLogSerializer
 from .serializers_support import (
+    LiveChatStartSerializer,
+    SupportMessageCreateSerializer,
+    SupportMessageSerializer,
     SupportRequestCreateSerializer,
     SupportRequestSerializer,
     SupportRequestStatusSerializer,
@@ -73,6 +78,10 @@ class PublicSiteOverviewView(APIView):
 
 class SupportRequestRateThrottle(AtomicScopedRateThrottle):
     scope = "support"
+
+
+class LiveChatMessageRateThrottle(AtomicScopedRateThrottle):
+    scope = "live_chat_message"
 
 
 class AdminEmailThrottle(AtomicScopedRateThrottle):
@@ -158,7 +167,9 @@ class SupportRequestCollectionView(APIView):
         return ADMIN_ONLY
 
     def get(self, request):
-        requests = SupportRequest.objects.select_related("school", "reporter")
+        requests = SupportRequest.objects.select_related(
+            "school", "reporter"
+        ).order_by("-updated_at")
         if request.user.role != Role.SUPER_ADMIN:
             requests = requests.filter(school_id=request.user.school_id)
         paginator = StandardPagination()
@@ -172,6 +183,13 @@ class SupportRequestCollectionView(APIView):
         return response
 
     def post(self, request):
+        if not request.user.is_authenticated:
+            from apps.stre import security as captcha_security
+
+            captcha_security.check_captcha_and_turnstile(
+                request.data.get("captcha_id"), request.data.get("captcha"),
+                request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+            )
         serializer = SupportRequestCreateSerializer(
             data=request.data, context={"request": request}
         )
@@ -181,6 +199,126 @@ class SupportRequestCollectionView(APIView):
             {"id": str(ticket.pk), "status": ticket.status},
             status=201,
         )
+
+
+def _support_thread(ticket):
+    messages = [{
+        "id": f"initial-{ticket.pk}",
+        "sender_type": SupportMessage.SenderType.VISITOR,
+        "sender_name": ticket.name or "Visitor",
+        "body": ticket.message,
+        "created_at": ticket.created_at,
+    }]
+    messages.extend(SupportMessageSerializer(ticket.messages.all(), many=True).data)
+    return messages
+
+
+class WebsiteLiveChatStartView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [SupportRequestRateThrottle]
+
+    def post(self, request):
+        from apps.stre import security as captcha_security
+
+        captcha_security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"),
+            request.data.get("captcha"),
+            request.data.get("turnstile_token"),
+            request.META.get("REMOTE_ADDR"),
+        )
+        serializer = LiveChatStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        details = serializer.validated_data
+        access_token = secrets.token_urlsafe(32)
+        ticket = SupportRequest.objects.create(
+            name=details["name"],
+            email=details["email"],
+            phone=details.get("phone", ""),
+            role="guest",
+            category=SupportRequest.Category.CONTACT,
+            subject="Website live chat",
+            message=details["message"],
+            chat_token_hash=hashlib.sha256(access_token.encode("utf-8")).hexdigest(),
+        )
+        return Response(
+            {
+                "id": str(ticket.pk),
+                "access_token": access_token,
+                "messages": _support_thread(ticket),
+            },
+            status=201,
+        )
+
+
+class WebsiteLiveChatMessagesView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get_throttles(self):
+        if self.request.method == "POST":
+            return [LiveChatMessageRateThrottle()]
+        return super().get_throttles()
+
+    def get_conversation(self, request, request_id):
+        ticket = get_object_or_404(SupportRequest, pk=request_id)
+        access_token = request.META.get("HTTP_X_CHAT_TOKEN", "")
+        token_hash = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+        if not ticket.chat_token_hash or not hmac.compare_digest(
+            ticket.chat_token_hash, token_hash
+        ):
+            raise PermissionDenied("A valid chat access token is required.")
+        return ticket
+
+    def get(self, request, request_id):
+        ticket = self.get_conversation(request, request_id)
+        return Response(_support_thread(ticket))
+
+    def post(self, request, request_id):
+        ticket = self.get_conversation(request, request_id)
+        serializer = SupportMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = SupportMessage.objects.create(
+            conversation=ticket,
+            sender_type=SupportMessage.SenderType.VISITOR,
+            sender_name=ticket.name or "Visitor",
+            body=serializer.validated_data["body"],
+        )
+        ticket.status = SupportRequest.Status.OPEN
+        ticket.save(update_fields=["status", "updated_at"])
+        return Response(SupportMessageSerializer(message).data, status=201)
+
+
+class SupportRequestMessagesView(APIView):
+    permission_classes = [IsAuthenticated, RoleAccess]
+
+    def get_allowed_roles(self, request):
+        return ADMIN_ONLY
+
+    def get_conversation(self, request, request_id):
+        queryset = SupportRequest.objects.all()
+        if request.user.role != Role.SUPER_ADMIN:
+            queryset = queryset.filter(school_id=request.user.school_id)
+        return get_object_or_404(queryset, pk=request_id)
+
+    def get(self, request, request_id):
+        ticket = self.get_conversation(request, request_id)
+        return Response(_support_thread(ticket))
+
+    def post(self, request, request_id):
+        ticket = self.get_conversation(request, request_id)
+        serializer = SupportMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = SupportMessage.objects.create(
+            conversation=ticket,
+            sender_type=SupportMessage.SenderType.STAFF,
+            sender_name="Oshitech Support",
+            sender=request.user,
+            body=serializer.validated_data["body"],
+        )
+        ticket.status = SupportRequest.Status.IN_PROGRESS
+        ticket.save(update_fields=["status", "updated_at"])
+        return Response(SupportMessageSerializer(message).data, status=201)
 
 
 class SupportRequestDetailView(APIView):

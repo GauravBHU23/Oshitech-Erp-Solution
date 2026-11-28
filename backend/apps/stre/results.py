@@ -337,7 +337,10 @@ class PublicResultView(APIView):
         return Response(result_payload(_published_result(reg)))
 
     def post(self, request):
-        security.check_captcha(request.data.get("captcha_id"), request.data.get("captcha"))
+        security.check_captcha_and_turnstile(
+            request.data.get("captcha_id"), request.data.get("captcha"),
+            request.data.get("turnstile_token"), request.META.get("REMOTE_ADDR"),
+        )
         roll = str(request.data.get("roll_no", "")).strip().upper()
         mobile = re.sub(r"\D", "", str(request.data.get("mobile", "")))[-10:]
         reg = StreRegistration.objects.select_related("exam").filter(roll_no=roll, mobile=mobile).first()

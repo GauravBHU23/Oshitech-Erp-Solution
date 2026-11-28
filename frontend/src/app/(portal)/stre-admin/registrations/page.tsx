@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { STRE_STATUS_TONE, formatDate, streClassLabel, streSchoolFieldLabel } from "@/lib/stre";
+import { STRE_STATUS_TONE, formatDate, streClassLabel, streSchoolFieldLabel, streStateLabel } from "@/lib/stre";
 import { toast } from "@/lib/toast";
 import type { Paginated, Row } from "@/lib/types";
 import Icon from "@/components/Icon";
@@ -244,7 +244,10 @@ export default function StreRegistrationsPage() {
             </div>
             <dl className="grid gap-x-4 sm:grid-cols-2">
               <Detail label="Father's name" value={selected.father_name} />
-              <Detail label="Class / qualification" value={streClassLabel(selected.class_level)} />
+              <Detail label="Gender" value={selected.gender_label || selected.gender} />
+              <Detail label="Caste category" value={selected.caste_category_label || selected.caste_category} />
+              <Detail label="State" value={selected.state_label || streStateLabel(selected.state_code)} />
+              <Detail label="Qualification" value={streClassLabel(selected.class_level)} />
               <Detail label={streSchoolFieldLabel(selected.class_level)} value={selected.school_name} />
               <div className="sm:col-span-2"><Detail label="Address" value={selected.address} /></div>
               <Detail label="Subject" value={selected.subject} />

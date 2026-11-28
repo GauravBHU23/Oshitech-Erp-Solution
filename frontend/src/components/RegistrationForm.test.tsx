@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
@@ -9,6 +9,36 @@ vi.mock("next/link", () => ({
   default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={href} {...props}>{children}</a>
   ),
+}));
+// The real widget loads Cloudflare's script, which jsdom can't fetch — stub it so
+// the form always has a token, as if the person had completed the check. Runs the
+// callback once on mount only — the caller passes a fresh onChange every render,
+// so depending on it here would re-fire on every state update it causes.
+vi.mock("@/components/TurnstileWidget", () => ({
+  default: ({ onChange }: { onChange: (token: string) => void }) => {
+    const ran = useRef(false);
+    useEffect(() => {
+      if (ran.current) return;
+      ran.current = true;
+      onChange("test-turnstile-token");
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return null;
+  },
+}));
+// The real component fetches a fresh SVG captcha from the server — stub it so the
+// form always carries a valid-looking answer, as if the person had typed it in.
+vi.mock("@/components/StreCaptcha", () => ({
+  default: ({ onChange }: { onChange: (v: { captcha_id: string; captcha: string }) => void }) => {
+    const ran = useRef(false);
+    useEffect(() => {
+      if (ran.current) return;
+      ran.current = true;
+      onChange({ captcha_id: "test-captcha-id", captcha: "ABCDE" });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return null;
+  },
 }));
 
 const apiMock = vi.mocked(api);
@@ -198,6 +228,8 @@ describe("RegistrationForm", () => {
     });
 
     expect(container.textContent).toContain("Student Registration & Approval Slip");
+    expect(container.textContent).toContain("89ABCDEF");
+    expect(container.textContent).not.toContain("89abcdef-0123-4567-89ab-cdef01234567");
     expect(container.textContent).toContain("Class 8");
     expect(container.textContent).toContain("Rakesh Verma");
     expect(container.textContent).toContain("Anita Verma");
